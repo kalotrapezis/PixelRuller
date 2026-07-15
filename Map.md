@@ -83,7 +83,7 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `copyStyle()` / `pasteStyle()` | Style clipboard: copy the selected element's effective style keys, apply to the selection (🖌 buttons). |
 | `THEMES` / `buildPalette()` / `renderSwatches()` / `applyThemeToDesign()` | GTK/KDE light+dark palettes in the bottom bar; swatch click=fill, right-click=border; theme the whole design by widget role. |
 | `refreshTree()` | Rebuild the sidebar Elements tree (hierarchy by parent/slot + free elements): click=select, drag=re-parent/reorder (+z lift), ▲=bring to front. Called from relayout/selection changes. |
-| `runCommand(str)` / `execCommand(str)` | Command-line entry point (logs to `cmdLog`) / the verb interpreter: add, set (dotted paths), move (dx/dy or into+slot), resize, del, copy, rename, select, arrange, theme, list, help. |
+| `runCommand(str)` / `execCommand(str)` | Command-line entry point (logs to `cmdLog`) / the verb interpreter: add (including empty/deep-copy windows), set (dotted paths), move (dx/dy or into+slot), resize, del, copy, rename, select, arrange, theme, list, help. |
 | `findShape(ref)` / `tokenize` / `parseVal` | Resolve an element by id / exact name / name prefix; split a command into quoted-aware tokens; string→number/bool coercion. |
 | `#cmdInput` / `#cmdHist` (IIFE) | Bottom-bar command input: Enter runs, ↑/↓ history recall, popup of past commands (click to reuse). |
 | `hugDimensions()` / `prepareLayoutSize()` | Compute deterministic natural widget size from toolkit metrics/text and apply per-axis hug + min/max constraints. |
@@ -95,6 +95,7 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `WIDGETS` | Widget registry: per-toolkit defaults, including composable chrome/navigation widgets (Title/Status/Path bars, Tabs, Search, Split pane, Spacer, Window controls) and Menubar/Toolbar children. |
 | `insertWidget(kind, toolkit, at)` | Insert a toolkit widget at the view center or an explicit Library drop point; adopt it into the smallest container. |
 | `addPresetChild()` / `composeWindowPreset()` / `insertWindowPreset()` | Build editable toolkit trees from the supplied references. GTK follows `presets/GTK-Start.xml`. KDE follows `presets/KDE-Window.xml`, including full-width chrome and Toolbar → navigation buttons / growing spacer / Search / Hamburger. |
+| `cloneWindowVariant(source, options)` | Deep-copy a Window and every descendant with remapped ids/parents, preserve semantic child names, attach variant metadata, resize, and reflow relative layouts. |
 | Library native drag/drop | Widget cards carry `application/x-pixelruller-widget`; canvas drop inserts at image coordinates and adopts into Window/Section/Menubar/Toolbar. |
 | Tabs canvas click | In Select/Move mode, clicking a tab computes its index and updates `active`; Select does not create a movement drag. |
 | `seedSessionWindow()` | Seed a new blank design with a composed toolkit "Session" window preset. |
@@ -182,7 +183,7 @@ Single-page HTML structure: a toolbar with grouped controls (capture timer, mode
 | `#bottomBar` | Creation-mode bottom bar hosting relocated grid/show-numbers groups. |
 | `#library` | Creation-mode right Library panel: searchable widget list and icon grid from Assets/SVGs; Sections and Navigation open by default, secondary groups collapse. |
 | `#scaleBox` | Bottom-left zoom/scale % readout. |
-| `#addWin` | Floating ＋ button (creation mode, bottom-right): adds a Window as a new row of the window table. |
+| `#addWin` / `#windowDialog` | Floating ＋ opens the chooser for a new empty toolkit Window or a complete responsive/state copy of an existing Window; all roots remain visible in the table. |
 | `#start` | Start-mode chooser overlay (Screenshot / New canvas / Load). |
 | `#toast` | Bottom-center notification (hidden by default). |
 

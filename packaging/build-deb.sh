@@ -23,6 +23,7 @@ install -m 0644 "$ROOT/Assets/SVGs/screen-svgrepo-com.svg" "$PKGROOT/usr/share/i
 
 install -m 0644 "$ROOT/server.py" "$PKGROOT/opt/pixelruller/server.py"
 install -m 0644 "$ROOT/VERSION" "$PKGROOT/opt/pixelruller/VERSION"
+install -m 0644 "$ROOT/AI_SKILL.md" "$PKGROOT/opt/pixelruller/AI_SKILL.md"
 cp -a "$ROOT/web" "$PKGROOT/opt/pixelruller/web"
 cp -a "$ROOT/Assets" "$PKGROOT/opt/pixelruller/Assets"
 

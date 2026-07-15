@@ -9,6 +9,7 @@ Usage:
     python3 server.py --grid     # start, auto-capture and show the counting grid
     python3 server.py --no-open  # start without launching a browser
     python3 server.py --port N   # listen on a specific port (default: auto)
+    python3 server.py --print-ai-skill  # print the complete AI usage guide
 """
 
 import base64
@@ -26,7 +27,8 @@ WEB_DIR = os.path.join(ROOT, "web")
 ASSETS_DIR = os.path.join(ROOT, "Assets")
 SAVE_SUBDIR = "PixelRuller"
 APP_NAME = "PixelRuller"
-APP_VERSION = "0.0.1"
+APP_VERSION = "0.0.2"
+AI_SKILL_PATH = os.path.join(ROOT, "AI_SKILL.md")
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -224,6 +226,17 @@ def main():
     args = sys.argv[1:]
     if "--version" in args:
         print(f"{APP_NAME} {APP_VERSION}")
+        return
+    if "--ai-skill-path" in args:
+        print(AI_SKILL_PATH)
+        return
+    if "--print-ai-skill" in args:
+        try:
+            with open(AI_SKILL_PATH, encoding="utf-8") as fh:
+                print(fh.read(), end="")
+        except OSError as exc:
+            print(f"Could not read {AI_SKILL_PATH}: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
         return
     open_browser = "--no-open" not in args
     grid = "--grid" in args

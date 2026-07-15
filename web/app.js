@@ -1521,12 +1521,16 @@ function composeWindowPreset(win, toolkit) {
   return content;
 }
 
-function insertWindowPreset(toolkit = libToolkit) {
+function insertWindowPreset(toolkit = libToolkit, options = {}) {
   insertWidget("window", toolkit);
   const win = state.shapes[state.selected];
-  if (!isWindow(win)) return;
-  win.name = uniqueName(toolkit === "kde" ? "KDE Window" : "GTK Window");
+  if (!isWindow(win)) return null;
+  win.w = Math.max(160, Number(options.w) || win.w);
+  win.h = Math.max(120, Number(options.h) || win.h);
+  win.name = uniqueName(options.name || (toolkit === "kde" ? "KDE Window" : "GTK Window"));
   win.text = win.name;
+  win.variantLabel = options.variantLabel || win.name;
+  win.variantOf = options.variantOf || null;
   win.barFill = toolkit === "kde" ? "#dae0e5" : win.fill;
   const content = composeWindowPreset(win, toolkit);
   selectOnly(state.shapes.indexOf(content));
@@ -1534,6 +1538,44 @@ function insertWindowPreset(toolkit = libToolkit) {
   render();
   if (document.getElementById("autosave").checked) save();
   toast(`Added ${toolkit === "kde" ? "KDE" : "GTK"} window preset`);
+  return win;
+}
+
+// Clone a complete Window tree as another visible size/state stage. Child names
+// intentionally stay identical so a human or AI can compare the same semantic
+// widget across variants; ids and parent links are remapped independently.
+function cloneWindowVariant(source, options = {}) {
+  if (!isWindow(source)) return null;
+  const originals = [source, ...descendantsOf(source)];
+  const idMap = new Map(originals.filter(s => s.id).map(s => [s.id, nextId()]));
+  const rootId = idMap.get(source.id);
+  const clones = originals.map((item, index) => {
+    const c = JSON.parse(JSON.stringify(item));
+    if (c.id) c.id = idMap.get(c.id);
+    if (c.parent && idMap.has(c.parent)) c.parent = idMap.get(c.parent);
+    c.z = nextZ() + index;
+    if (item === source) {
+      c.parent = null;
+      c.slot = null;
+      c.name = uniqueName(options.name || `${source.name || "Window"} variant`);
+      c.w = Math.max(160, Number(options.w) || source.w);
+      c.h = Math.max(120, Number(options.h) || source.h);
+      c.variantOf = source.variantOf || source.id;
+      c.variantLabel = options.variantLabel || c.name;
+    }
+    state.shapes.push(c);
+    return c;
+  });
+  const win = clones.find(c => c.id === rootId) || clones[0];
+  relayout();
+  selectOnly(state.shapes.indexOf(win));
+  state.mode = "select";
+  applyModeUI();
+  syncInputsFromSelection();
+  render();
+  if (document.getElementById("autosave").checked) save();
+  toast(`Added ${win.variantLabel} from ${source.name || "window"}`);
+  return win;
 }
 
 // Fetch the asset list and build the Library icon grid (once).
@@ -2234,11 +2276,13 @@ function deleteSelected() {
   const windowsTotal = state.shapes.filter(isWindow).length;
   let blockedWindow = false;
   const toDelete = new Set();
+  let windowsMarked = 0;
   for (const i of state.selection) {
     const s = state.shapes[i];
-    if (isWindow(s) && windowsTotal - toDelete.size <= 1) { blockedWindow = true; continue; }
+    if (isWindow(s) && windowsTotal - windowsMarked <= 1) { blockedWindow = true; continue; }
     toDelete.add(i);
-    if (isComposite(s)) for (const k of descendantsOf(s)) toDelete.add(state.shapes.indexOf(k));
+    if (isWindow(s)) windowsMarked++;
+    if (isContainer(s)) for (const k of descendantsOf(s)) toDelete.add(state.shapes.indexOf(k));
   }
   if (!toDelete.size) { if (blockedWindow) toast("The root Window can't be deleted", true); return; }
   // Splice from the end so indices stay valid.
@@ -2259,7 +2303,7 @@ function copySelected() {
   if (!state.selection.length) return;
   const roots = state.selection.map(i => state.shapes[i]).filter(Boolean);
   const copied = new Set(roots);
-  for (const s of roots) if (isComposite(s)) for (const k of descendantsOf(s)) copied.add(k);
+  for (const s of roots) if (isContainer(s)) for (const k of descendantsOf(s)) copied.add(k);
   clipboardRoots = roots.map(s => s.id);
   clipboard = [...copied].map(s => JSON.parse(JSON.stringify(s)));
 }
@@ -2419,7 +2463,8 @@ const parseVal = (v) => {
 const tokenize = (str) => (str.match(/"[^"]*"|\S+/g) || []).map(t => t.replace(/^"|"$/g, ""));
 
 const CMD_HELP =
-  'add <widget|rect|ellipse|window> [into <container>] · set <el> <prop>[.<side>] <value> · ' +
+  'add <widget|rect|ellipse> [into <container>] · add window empty [gtk4|kde] [w] [h] [name] · ' +
+  'add window copy <source> [w] [h] [name] · set <el> <prop>[.<side>] <value> · ' +
   'move <el> <dx> <dy> · move <el> into <container> [<slot>] · resize <el> <w> <h> · ' +
   'del <el> · copy <el> [n] · rename <el> <name> · select <el> · arrange <container> · ' +
   'make-widget [name] · enter <composite> · exit · ungroup <composite|section> · ' +
@@ -2450,6 +2495,26 @@ function execCommand(input) {
       case "add": {
         const kind = (t[1] || "").toLowerCase();
         if (!kind) return fail("add what? try: add button");
+        if (kind === "window") {
+          const mode = (t[2] || "empty").toLowerCase();
+          if (mode === "empty") {
+            const toolkit = ["gtk4", "kde"].includes((t[3] || "").toLowerCase()) ? t[3].toLowerCase() : libToolkit;
+            const offset = toolkit === (t[3] || "").toLowerCase() ? 4 : 3;
+            const w = Number(t[offset]) || 600, h = Number(t[offset + 1]) || 400;
+            const name = t.slice(offset + 2).join(" ") || (toolkit === "kde" ? "KDE Window" : "GTK Window");
+            const win = insertWindowPreset(toolkit, { w, h, name, variantLabel: name });
+            return win ? done(`added empty window ${win.name} (${win.w}×${win.h})`) : fail("could not add window");
+          }
+          if (mode === "copy") {
+            const source = findShape(t[3]);
+            if (!isWindow(source)) return fail(`no window "${t[3] || ""}"`);
+            const w = Number(t[4]) || source.w, h = Number(t[5]) || source.h;
+            const name = t.slice(6).join(" ") || `${source.name || "Window"} variant`;
+            const win = cloneWindowVariant(source, { w, h, name, variantLabel: name });
+            return win ? done(`added window variant ${win.name} (${win.w}×${win.h})`) : fail("could not copy window");
+          }
+          return fail("add window empty [gtk4|kde] [w] [h] [name] | add window copy <source> [w] [h] [name]");
+        }
         const intoIdx = t.indexOf("into");
         const container = intoIdx > 0 ? findShape(t[intoIdx + 1]) : null;
         if (intoIdx > 0 && !container) return fail(`no container "${t[intoIdx + 1]}"`);
@@ -3090,6 +3155,8 @@ function serializeShape(s) {
       text: s.text || null, fontSize: s.fontSize || 14, textColor: s.textColor,
       alignH: s.alignH || null, alignV: s.alignV || null,
     };
+    if (s.variantOf) out.variantOf = s.variantOf;
+    if (s.variantLabel) out.variantLabel = s.variantLabel;
     if (s.checked != null) out.checked = !!s.checked;
     if (s.on != null) out.on = !!s.on;
     if (s.value != null) out.value = s.value;
@@ -3241,6 +3308,7 @@ function loadDesign(doc) {
       return { type: "widget", id: s.id || null, parent: s.parent || null,
         ...loadSizing(s),
         slot: s.slot != null ? s.slot : null, widget: s.widget, toolkit: s.toolkit || null,
+        variantOf: s.variantOf || null, variantLabel: s.variantLabel || null,
         name: s.name || "", x: s.x, y: s.y, w: s.w, h: s.h, radius: s.radius || 0,
         fixed: !!s.fixed, z: s.z || 0, opacity: s.opacity != null ? s.opacity : 100,
         margin: s.margin || 0, padding: s.padding || 0, fill: s.fill, stroke: s.stroke,
@@ -3397,6 +3465,8 @@ function elementXml(s, indent) {
     a.push(`resize-mode="${xmlEsc(s.resizeMode || "reflow")}"`);
   }
   if (s.text) a.push(`text="${xmlEsc(s.text)}"`);
+  if (s.variantOf) a.push(`variant-of="${xmlEsc(s.variantOf)}"`);
+  if (s.variantLabel) a.push(`variant-label="${xmlEsc(s.variantLabel)}"`);
   if (s.src) a.push(`src="${xmlEsc(s.src)}"`);
   if (s.icon) a.push(`icon="${xmlEsc(s.icon)}"`);
   if (s.iconSize) a.push(`icon-size="${s.iconSize}"`);
@@ -3769,12 +3839,76 @@ buildPalette();
   });
 })();
 
-// "+" — add a complete toolkit Window preset as a new row.
-document.getElementById("addWin").addEventListener("click", () => {
-  insertWindowPreset(libToolkit);
-  fitToView();
-  render();
+// "+" — add either a fresh toolkit window or a complete responsive/state
+// variant. Every root remains visible in the vertically stacked window table.
+const windowDialog = document.getElementById("windowDialog");
+const windowForm = document.getElementById("windowForm");
+const windowSource = document.getElementById("windowSource");
+const windowSourceRow = document.getElementById("windowSourceRow");
+const windowToolkitRow = document.getElementById("windowToolkitRow");
+
+function selectedRootWindow() {
+  let s = state.selected !== null ? state.shapes[state.selected] : null;
+  while (s && !isWindow(s)) s = s.parent ? byId(s.parent) : null;
+  return isWindow(s) ? s : state.shapes.find(isWindow);
+}
+
+function syncWindowDialogMode() {
+  const mode = windowForm.elements.windowMode.value;
+  windowSourceRow.hidden = mode !== "copy";
+  windowToolkitRow.hidden = mode !== "empty";
+  const source = byId(windowSource.value);
+  if (mode === "copy" && source) {
+    document.getElementById("windowWidth").value = source.w;
+    document.getElementById("windowHeight").value = source.h;
+    document.getElementById("windowName").value = `${source.name || "Window"} variant`;
+  }
+}
+
+function openWindowDialog() {
+  const wins = state.shapes.filter(isWindow);
+  const active = selectedRootWindow() || wins[0];
+  windowSource.innerHTML = wins.map(w =>
+    `<option value="${htmlEsc(w.id)}">${htmlEsc(w.name || w.id)} — ${Math.round(w.w)}×${Math.round(w.h)}</option>`
+  ).join("");
+  if (active) windowSource.value = active.id;
+  windowForm.elements.windowMode.value = wins.length ? "copy" : "empty";
+  document.getElementById("windowToolkit").value = active?.toolkit || libToolkit;
+  syncWindowDialogMode();
+  windowDialog.hidden = false;
+  document.getElementById("windowName").focus();
+  document.getElementById("windowName").select();
+}
+
+function closeWindowDialog() { windowDialog.hidden = true; }
+
+document.getElementById("addWin").addEventListener("click", openWindowDialog);
+windowForm.addEventListener("change", (e) => {
+  if (e.target.name === "windowMode" || e.target === windowSource) syncWindowDialogMode();
 });
+windowForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const mode = windowForm.elements.windowMode.value;
+  const w = Number(document.getElementById("windowWidth").value) || 600;
+  const h = Number(document.getElementById("windowHeight").value) || 400;
+  const name = document.getElementById("windowName").value.trim() || "Window variant";
+  let win = null;
+  if (mode === "copy") {
+    const source = byId(windowSource.value);
+    if (!source) { toast("Choose a window to duplicate", true); return; }
+    win = cloneWindowVariant(source, { w, h, name, variantLabel: name });
+  } else {
+    win = insertWindowPreset(document.getElementById("windowToolkit").value, { w, h, name, variantLabel: name });
+  }
+  if (win) {
+    closeWindowDialog();
+    fitToView();
+    render();
+  }
+});
+document.getElementById("windowCancel").addEventListener("click", closeWindowDialog);
+document.getElementById("windowCancelX").addEventListener("click", closeWindowDialog);
+windowDialog.addEventListener("mousedown", e => { if (e.target === windowDialog) closeWindowDialog(); });
 
 // ⧉ next to each color: copy the hex to the clipboard.
 document.querySelectorAll(".pp-copy").forEach(b => b.addEventListener("click", (e) => {

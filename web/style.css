@@ -585,6 +585,63 @@ body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
 }
 .addwin:hover { background: var(--accent-hi); }
 
+/* New-window chooser: empty toolkit frame or a complete responsive/state copy. */
+.window-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(9, 11, 15, 0.72);
+  backdrop-filter: blur(4px);
+}
+.window-card {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
+}
+.window-card-head, .window-actions, .window-size, .window-modes {
+  display: flex;
+  align-items: center;
+}
+.window-card-head { justify-content: space-between; gap: 16px; }
+.window-card-title { font-size: 20px; font-weight: 700; }
+.window-card-sub, .window-note { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.window-close { align-self: flex-start; padding: 4px 8px; }
+.window-modes { gap: 10px; }
+.window-modes label {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.window-field { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.window-field input, .window-field select, .window-size input {
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #1c1f25;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.window-size { gap: 10px; color: var(--muted); }
+.window-size label { flex: 1; display: grid; gap: 6px; font-size: 12px; }
+.window-actions { justify-content: flex-end; gap: 8px; }
+.window-actions button { padding: 8px 14px; }
+
+@media (max-width: 620px) {
+  .window-modes { flex-direction: column; align-items: stretch; }
+}
+
 /* Start-mode chooser */
 .start {
   position: absolute;

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.2 — 2026-07-15
+
+- Add a responsive window-stage chooser: create an empty GTK/KDE window or
+  deep-copy an existing window and every nested widget at a new size.
+- Keep every application window and responsive/state variant visible together
+  on the canvas for practical comparison and resizing tests.
+- Round-trip `variantOf` and `variantLabel` through canonical JSON and XML.
+- Extend the design command bar with parameterized empty/copy window commands.
+- Ship a complete platform-neutral AI guide covering access, permissions,
+  commands, properties, widget catalogue, grouping, layout, official guideline
+  sources, and the exact GTK/KDE palettes.
+- Add `pixelruller --print-ai-skill` and `--ai-skill-path` for installed AI tools.
+- Document feature-number/fix-letter versioning.
+
 ## v0.0.1 — 2026-07-15
 
 First public release of PixelRuller.

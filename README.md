@@ -2,7 +2,7 @@
 
 AI collaborators should read [`AI_SKILL.md`](AI_SKILL.md) before creating, editing, or implementing a PixelRuller UI design.
 
-Current release: **v0.0.1**
+Current release: **v0.0.2**
 
 A pixel-measuring tool for counting screen distances, positions, and areas.
 It grabs a full screenshot, overlays a ruler grid, and lets you drop points or
@@ -49,15 +49,20 @@ Check the installed or source version with:
 
 ## Install the Debian package
 
-Download `pixelruller_0.0.1_all.deb` from the GitHub release and install it with:
+Download `pixelruller_0.0.2_all.deb` from the GitHub release and install it with:
 
 ```bash
-sudo apt install ./pixelruller_0.0.1_all.deb
+sudo apt install ./pixelruller_0.0.2_all.deb
 ```
 
 Then launch **PixelRuller** from the application menu or run `pixelruller` in a
 terminal. Build the package locally with `packaging/build-deb.sh`; the result is
 written to `dist/`.
+
+The package installs `/usr/bin/pixelruller`, so the command is system-wide after
+installation. Root is not required to run it. An AI needs browser-control access
+to operate the live editor, but can always print the complete platform-neutral
+usage guide with `pixelruller --print-ai-skill`.
 
 On launch you pick a **start mode**:
 
@@ -171,6 +176,11 @@ pointing tools.
   via the properties panel, and round-tripped through `design.json`.
 - A new blank canvas opens with a default **Window named "Session"** (PC apps
   have windows, not phone screens — analogous to Android activities).
+- The floating **＋** opens an **Add window** chooser. Create a new empty GTK/KDE
+  window, or duplicate any existing window with its complete widget tree. Give
+  the copy another width/height to test a compact, regular, wide, loading, error,
+  or complete stage. Every root stays visible on the same canvas so a human and
+  AI can compare all sizes/states together.
 - **Copy / Cut / Paste / Duplicate / Delete** — `Ctrl+C` / `X` / `V` / `D` and
   `Del` on the selected element (paste is offset and auto-renamed). In creation
   mode the tool + edit buttons (Select/Rect/Ellipse, Copy/Cut/Paste/Delete/Undo/
@@ -196,8 +206,9 @@ pointing tools.
   native controls; referenced assets are embedded. Only explicit **Fixed** mode
   generates absolute positioning. JSON remains the canonical editable format.
 - The current **zoom %** shows at the bottom-left of the canvas.
-- The **Window** is the always-present root parent (the "Session") — it can't be
-  deleted, and a new canvas starts with one.
+- A **Window** is a root parent. The final root cannot be deleted, and a new
+  canvas starts with one; additional application windows and responsive/state
+  variants may be added and removed.
 - **Name / Text / Stroke / Fill / r** — with an element selected, the Name box
   renames it, the second box sets its **visible text** (e.g. a button label),
   and the two color pickers + `r` set stroke, fill, and corner roundness. Every
@@ -247,6 +258,7 @@ so the closer you zoom the more precise each placement is.
 - `server.py` — capture (`spectacle`) + save endpoints, static file serving.
 - `web/index.html`, `web/style.css`, `web/app.js` — the canvas app.
 - `run.sh` — launcher.
+
 Composite widgets can be created from any three or more selected elements with
 **◈ Make Widget**. The composite has its own outer fill, border and independent
 corner radii without rewriting child styles. Use **Enter** (or double-click) to
@@ -256,3 +268,9 @@ remove only the frame. Composite trees persist in JSON and nested XML.
 Dragging a widget from the Library or an existing item from the Elements tree
 onto the canvas now highlights the exact target container and paints the
 insertion line before the drop.
+
+## Versioning
+
+Feature releases increment the numeric version, for example `v0.0.1` →
+`v0.0.2`. Fix-only releases keep that feature number and append letters:
+`v0.0.2-a`, `v0.0.2-b`, … `v0.0.2-z`, then `v0.0.2-aa`, `v0.0.2-ab`, and so on.

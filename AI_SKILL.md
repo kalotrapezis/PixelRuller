@@ -1,84 +1,267 @@
-# PixelRuller AI Design Workflow
+# PixelRuller AI Usage Guide
 
-Use this guide when an AI works with a UI designed in PixelRuller.
+This plain Markdown guide is platform-neutral. Give it to any AI that will create,
+edit, inspect, or implement a PixelRuller design. PixelRuller is a shared visual
+design surface, not a programming language or application-behavior engine.
 
-## Purpose
+## Access after installation
 
-Treat PixelRuller as a shared visual design surface between a human and an AI. It is not a programming language, a low-code platform, or the place where application behavior is implemented.
+The Debian package installs the launcher as `/usr/bin/pixelruller`, so the app is
+available to every normal user through the application menu and shell `PATH`.
+Administrator permission is required only to install or remove the package.
 
-- The human edits the interface visually.
-- PixelRuller stores the design as precise, readable data.
-- The AI reads that data and implements the real application in the project's chosen toolkit or framework.
+An AI does not need root access to use PixelRuller. It needs:
 
-## Core rules
+- permission from its host to run `pixelruller` if it must start the app;
+- browser-control access to the local PixelRuller tab to operate the visual UI;
+- read/write access to the project design JSON if it will update that file.
 
-1. Treat the canonical design JSON as the source of truth for the interface.
-2. Preserve the human's visual decisions: hierarchy, order, sizes, percentages, spacing, colors, typography, alignment, borders, and widget names.
-3. Keep business logic, file pickers, commands, validation, navigation, and other runtime behavior in the real application code.
-4. Do not add programming concepts to PixelRuller merely to make one sample application work.
-5. Keep the relationship one-to-one: visible design properties must exist in the JSON and must translate to the implementation.
-6. Do not invent behavior from appearance alone. Infer ordinary widget intent when it is obvious; otherwise use the user's description or the target application's existing behavior.
-7. Prefer nested sections and relative layout over fixed positioning. Use fixed positioning only when the design explicitly requires it.
+Screenshot capture additionally requires a graphical KDE session and Spectacle.
+Canvas design, JSON loading, commands, and code export do not need screenshot
+permission. An AI without browser control can still read and implement exported
+JSON, but it cannot click or visually verify the live editor.
 
-## Understand the project
+Useful installed commands:
 
-Before changing a design or implementing it:
+```text
+pixelruller                         Start and open the app
+pixelruller --no-open               Start without opening a browser
+pixelruller --port 8765             Use a known local port
+pixelruller --grid                  Start in screenshot/grid mode
+pixelruller --version               Print the installed version
+pixelruller --ai-skill-path         Print this guide's installed path
+pixelruller --print-ai-skill        Print this complete guide
+```
 
-1. Read `README.md` for the user workflow.
-2. Read `Map.md` for the project structure and important functions.
-3. Read the relevant design JSON under `web/` or the path supplied by the user.
-4. Inspect the target application's existing code before choosing implementation details.
+A reliable AI-controlled session is:
 
-## Read a PixelRuller design
+```text
+pixelruller --no-open --port 8765
+```
 
-The important document fields are:
+Then open `http://127.0.0.1:8765/` in a browser-control surface. The command bar
+inside PixelRuller is a design command bar; its commands are not shell commands.
 
-- `canvas`: design size and background.
-- `shapes`: all windows, sections, widgets, icons, rectangles, and ellipses.
-- `id`: stable element identity.
-- `name`: human-readable identity; use it to map a design element to code.
-- `parent` and `slot`: hierarchy and order.
-- `widget`: semantic widget type.
-- `layout`, `align`, `gap`, `padding`, and `margin`: container layout.
-- `sizeModeX` and `sizeModeY`: `fixed`, `fill`, `percent`, or `hug` sizing.
-- `widthPercent`, `heightPercent`, `grow`, and min/max values: responsive sizing.
-- `fill`, `stroke`, `radius`, `opacity`, `fontSize`, `textColor`, `alignH`, and `alignV`: appearance.
-- `text`, icons, and widget state fields: visible content and initial state.
+## Non-negotiable design rules
 
-Use `id` and `name` together when comparing revisions. Do not rely only on `x` and `y`, because managed containers recalculate child geometry.
+1. The canonical PixelRuller JSON is the source of truth for the interface.
+2. Preserve hierarchy, slot order, sizes, percentages, spacing, colors,
+   typography, alignment, borders, states, widget names, and window variants.
+3. Every visible design property must round-trip through JSON and translate into
+   implementation code. Do not use editor-only layout illusions.
+4. Prefer nested Sections and relative layout. Use `fixed: true` only when the
+   approved design deliberately needs absolute positioning.
+5. Business logic, file pickers, validation, navigation, and runtime commands
+   belong in the real application code. PixelRuller describes the controls.
+6. Do not infer unusual behavior from appearance alone. Use the user's brief or
+   the target application's existing behavior.
+7. Reload and visually inspect a design after material changes, including at
+   more than one window size.
 
-## Human-to-AI workflow
+## Widget catalogue
 
-1. Open or load the canonical design in PixelRuller.
-2. Let the human make visual changes in the editor.
-3. Export the updated JSON.
-4. Save the approved export back to the canonical project path without discarding unrelated user changes.
-5. Compare the old and new JSON by element identity and hierarchy.
-6. Translate only the approved design changes into the real application code.
-7. Run appropriate code checks and visually inspect the implementation at normal and resized window dimensions.
-8. Report which design file was used, which code was changed, and any difference that could not be reproduced exactly.
+Use semantic widgets instead of decorative rectangles whenever one exists.
 
-## AI-to-human workflow
+| Category | Widget command names |
+|---|---|
+| Sections | `window`, `section`, `splitpane` |
+| Input | `button`, `textbox`, `checkbox`, `radio`, `toggle`, `slider`, `dropdown`, `scrollbar` |
+| Navigation | `menubar`, `toolbar`, `menuitem`, `toolbutton`, `separator`, `spacer`, `tabs`, `wincontrols`, `titlebar`, `statusbar`, `breadcrumb`, `searchfield` |
+| Output | `label`, `image`, `progress`, `list`, `clock`, `calendar` |
+| Backend/logical | `file`, `storage` |
 
-When the AI creates or improves a design:
+`rect`, `ellipse`, `icon`, and user-made `composite` elements also exist. Backend
+widgets express an implementation dependency; they do not implement storage.
 
-1. Build the interface from named semantic widgets, not decorative rectangles when a real widget exists.
-2. Compose complex areas from sections inside sections.
-3. Use vertical, horizontal, table, percentage, fill, grow, and hug sizing to express responsive intent.
-4. Keep each widget's role clear from its `name` and visible text.
-5. Save the result as a canonical JSON file that the human can reopen and edit.
-6. Reload it in PixelRuller and inspect it visually before handing it back.
+## Hierarchy and grouping
 
-## Boundaries
+- `window` is a root container. At least one root must remain.
+- `section`, `splitpane`, `menubar`, `toolbar`, `titlebar`, and `composite` can
+  own children where appropriate.
+- `parent` stores the owner's id; `slot` stores sibling order.
+- Build complex regions as Sections inside Sections.
+- Use `make-widget` only for a reusable editable visual composite. Use a Section
+  for ordinary layout grouping.
+- Managed children follow their parent's layout. Their computed `x`/`y` are
+  outputs of hierarchy and layout, not the primary responsive intent.
 
-PixelRuller may describe that a control is a button, textbox, menu, progress bar, or file field. The target application decides what happens when the user interacts with it.
+Container layout values are `vertical`, `horizontal`, `table`, or `none`.
+`none` means manual placement. Important responsive fields are:
 
-For example, a PDF application's `Browse…` button belongs in the PixelRuller design, but the native file-picker implementation belongs in the PDF application's code. Do not add a general action engine to PixelRuller for this.
+```text
+layout, align, gap, wrap, cols, overflow
+padding.{t,r,b,l}, margin.{t,r,b,l}
+sizeModeX, sizeModeY: fixed | fill | percent | hug
+widthPercent, heightPercent, grow
+minW, maxW, minH, maxH, colSpan, rowSpan
+```
 
-## Completion checklist
+Use percentage sizing for ratios such as 50/25/25. Use `grow` to distribute
+remaining space. Use `fill` to take available space and `hug` to follow content.
 
-- The canonical JSON contains the latest approved visual state.
-- Widget hierarchy and responsive sizing survive reload.
-- The implementation matches the design at more than one window size.
-- No application-specific behavior was pushed into PixelRuller.
-- The human can continue editing the same design and the AI can continue from the resulting JSON.
+## Multiple windows and responsive stages
+
+All root windows remain visible together in a vertically stacked window table.
+They may be separate application windows or different sizes/states of the same
+interface. The floating `+` asks for either:
+
+- **Duplicate existing**: deep-copies the complete widget tree, remaps ids and
+  parent links, preserves semantic child names, and reflows it at a new size.
+- **New empty window**: creates editable GTK or KDE window chrome and an empty
+  content container.
+
+Use duplicates to show compact/regular/wide sizes or stages such as empty,
+loading, error, and complete. A copied root records:
+
+```text
+variantOf      id of the original variant family
+variantLabel   human-readable size or state name
+```
+
+Do not replace this workflow with editor tabs that hide the other stages: their
+simultaneous visibility is deliberate for human/AI comparison.
+
+## Command bar reference
+
+Names containing spaces must be quoted. An element reference may be an id, an
+exact name, or an unambiguous name prefix.
+
+```text
+help
+list
+add <widget> [into <container>]
+add rect [x y w h] [into <container>]
+add ellipse [x y w h] [into <container>]
+add window empty [gtk4|kde] [w] [h] [name]
+add window copy <source> [w] [h] [name]
+set <element> <property>[.<side>] <value>
+move <element> <dx> <dy>
+move <element> into <container> [slot]
+resize <element> <w> <h>
+del <element>
+copy <element> [count]
+rename <element> <new name>
+select <element>
+arrange <container>
+make-widget [name]
+enter <composite>
+exit
+ungroup <composite|section>
+theme <GTK light|GTK dark|KDE light|KDE dark>
+```
+
+Examples:
+
+```text
+add section into Content
+rename Section "Output controls"
+set "Output controls" layout horizontal
+set "Output controls" gap 12
+set Progress sizeModeX percent
+set Progress widthPercent 50
+move Progress into "Output controls" 0
+add button into "Output controls"
+set Button text "Extract PDFs"
+add window copy Session 720 540 "Compact complete"
+add window empty kde 900 640 "Preferences"
+theme KDE dark
+```
+
+`set` accepts stored properties, including dotted spacing sides such as
+`padding.t`, `padding.r`, `margin.b`, and `margin.l`. Boolean text is parsed as
+`true`/`false`; numeric text becomes a number. The command history can replay
+previous operations with the up/down arrow keys.
+
+## Canonical JSON
+
+Top-level fields:
+
+```text
+app, version, mode
+canvas: width, height, background, bgColor
+grid: on, spacing_px
+count
+shapes[]
+```
+
+Common shape fields:
+
+```text
+type, id, parent, slot, name
+x, y, w, h, fixed, z
+sizeModeX, sizeModeY, widthPercent, heightPercent, grow
+minW, maxW, minH, maxH, colSpan, rowSpan
+fill, stroke, strokeWidth, opacity, radius
+text, fontSize, textColor, alignH, alignV
+margin, padding
+```
+
+Widget-specific fields include `widget`, `toolkit`, `layout`, `align`, `gap`,
+`cols`, `wrap`, `overflow`, `checked`, `on`, `value`, `active`, `controls`, icon
+fields, scroll fields, and window variant metadata. Compare revisions by `id`,
+`name`, `parent`, and `slot`, not only by computed coordinates.
+
+JSON is the canonical editable format. Nested XML, flow text, PNG, and runnable
+HTML are exports for inspection or implementation; they do not replace JSON.
+
+## Toolkit guidelines and palettes
+
+PixelRuller currently supports GTK 4/GNOME and KDE/Kirigami/Breeze. Windows
+Modern UI and macOS guidance are future additions and must not be invented from
+these Linux presets.
+
+Official guidance supplies the spacing systems and design principles. Exact
+per-widget pixel sizes and these practical role palettes are PixelRuller-derived
+defaults for reproducible design work; they are not claims that every value is
+an immutable official toolkit token.
+
+Spacing baseline:
+
+| Role | GTK/GNOME | KDE/Kirigami |
+|---|---:|---:|
+| Small | 6 px | 4 px |
+| Medium | 12 px | 6 px |
+| Large | 18 px | 8 px |
+| Content/window margin | 12 px | 8–12 px |
+| Label/control gap | 12 px | 6 px |
+
+Theme role order is background, surface, view, border, text, muted, accent,
+accent hover/highlight, success, warning, error.
+
+| Theme | bg | surface | view | border | text | muted | accent | accentHi | success | warning | error |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| GTK light | `#fafafa` | `#ffffff` | `#ffffff` | `#d5d0cc` | `#3d3846` | `#77767b` | `#3584e4` | `#1c71d8` | `#26a269` | `#e5a50a` | `#c01c28` |
+| GTK dark | `#242424` | `#303030` | `#1e1e1e` | `#1b1b1b` | `#ffffff` | `#9a9996` | `#78aeed` | `#62a0ea` | `#33d17a` | `#f8e45c` | `#ff7b63` |
+| KDE light | `#eff0f1` | `#fcfcfc` | `#ffffff` | `#bdc3c7` | `#232629` | `#7f8c8d` | `#3daee9` | `#93cee9` | `#27ae60` | `#f67400` | `#da4453` |
+| KDE dark | `#31363b` | `#2a2e32` | `#232629` | `#4d4d4d` | `#eff0f1` | `#a1a9b1` | `#3daee9` | `#93cee9` | `#27ae60` | `#f67400` | `#da4453` |
+
+Sources:
+
+- GNOME Human Interface Guidelines: https://developer.gnome.org/hig/
+- GNOME layout archive: https://wiki.gnome.org/Design/HIG/Planning/Layout
+- KDE Human Interface Guidelines: https://develop.kde.org/hig/
+- KDE units and measurements: https://develop.kde.org/hig/layout/units.html
+- Kirigami Units reference: https://api.kde.org/kirigami-platform-units.html
+
+See `libraries.md` in the project for the full derived widget metrics and source
+notes.
+
+## Human and AI workflow
+
+Before editing, read this guide, the project README/Map, the canonical JSON, and
+the target application's existing code. Then:
+
+1. Open the canonical design through Load or `?design=filename.json`.
+2. Make semantic, named changes with widgets and nested containers.
+3. Create visible size/state variants when responsiveness matters.
+4. Export JSON and save it back to the canonical project path without removing
+   unrelated user changes.
+5. Reload the JSON and inspect the editor visually.
+6. Translate the approved hierarchy and properties into real application code.
+7. Test the implementation at every represented window size/state.
+8. Report the design file, code changes, visual checks, and any unavoidable
+   implementation difference.
+
+Completion means the approved visual state survives JSON reload, responsive
+layout works at multiple sizes, behavior remains in application code, and both
+the human and AI can continue from the same design file.
