@@ -13,16 +13,19 @@ mkdir -p \
   "$PKGROOT/usr/bin" \
   "$PKGROOT/usr/share/applications" \
   "$PKGROOT/usr/share/icons/hicolor/scalable/apps" \
+  "$PKGROOT/usr/share/pixmaps" \
   "$PKGROOT/usr/share/doc/pixelruller" \
   "$ROOT/dist"
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/packaging/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/packaging/pixelruller" "$PKGROOT/usr/bin/pixelruller"
+install -m 0755 "$ROOT/scripts/pixelruller_command.py" "$PKGROOT/usr/bin/pixelruller-command"
 install -m 0644 "$ROOT/packaging/pixelruller.desktop" "$PKGROOT/usr/share/applications/pixelruller.desktop"
-install -m 0644 "$ROOT/Assets/SVGs/screen-svgrepo-com.svg" "$PKGROOT/usr/share/icons/hicolor/scalable/apps/pixelruller.svg"
+install -m 0644 "$ROOT/Assets/pixelruller-icon.png" "$PKGROOT/usr/share/pixmaps/pixelruller.png"
 
 install -m 0644 "$ROOT/server.py" "$PKGROOT/opt/pixelruller/server.py"
 install -m 0644 "$ROOT/VERSION" "$PKGROOT/opt/pixelruller/VERSION"
+install -m 0644 "$ROOT/AI_SKILL.md" "$PKGROOT/opt/pixelruller/AI_SKILL.md"
 cp -a "$ROOT/web" "$PKGROOT/opt/pixelruller/web"
 cp -a "$ROOT/Assets" "$PKGROOT/opt/pixelruller/Assets"
 

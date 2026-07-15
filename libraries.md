@@ -73,11 +73,28 @@ Each entry: **w×h**, inner **padding**, outer **margin**, **radius**, plus note
   selected element (paddings/margins/radius), so a hand-drawn box snaps to spec.
 - Switching toolkit re-maps the exported component names/props.
 
+## Control rules
+
+- Preserve button padding in fixed and hug modes. If text does not fit, shorten
+  the imperative label or widen the button; never collapse its padding.
+- Keep neighboring action buttons equal in height and preferably equal in width.
+- Use a nearby title/subtitle for context, for example `3 enrolled faces` plus
+  an `Edit Faces` button instead of a long sentence inside the button.
+- Render switch handles with a theme-derived neutral foreground/handle color.
+  Black is not a universal GTK or KDE switch-knob token. Keep the track accent
+  distinct from the handle and retain high-contrast compatibility.
+- Use switches for immediately applied settings and checkboxes for settings that
+  are committed later with Apply/OK.
+
 ## Sources
 
 - [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
+- [GNOME HIG — Buttons](https://developer.gnome.org/hig/patterns/controls/buttons.html)
+- [Libadwaita styles and high contrast](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/styles-and-appearance.html)
 - [GNOME HIG — Layout (Wiki archive)](https://wiki.gnome.org/Design/HIG/Planning/Layout) — 12 px window margin, 12 px label↔control
 - [KDE Human Interface Guidelines](https://develop.kde.org/hig/)
+- [KDE HIG — Getting input](https://develop.kde.org/hig/getting_input/)
+- [KDE HIG — Layout and navigation](https://develop.kde.org/hig/layout_and_nav/)
 - [KDE HIG — Units & Measurements](https://develop.kde.org/hig/layout/units.html)
 - [Kirigami Units (smallSpacing 4 / large 8)](https://invent.kde.org/frameworks/kirigami/-/merge_requests/479)
 - [Kirigami::Units class reference](https://api.kde.org/kirigami-platform-units.html)

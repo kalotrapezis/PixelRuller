@@ -4,8 +4,9 @@ Section: graphics
 Priority: optional
 Architecture: all
 Maintainer: Theologos Kalotrapezis <kalotrapezis@users.noreply.github.com>
-Depends: python3, spectacle
+Depends: python3
 Recommends: xdg-user-dirs
+Suggests: kde-spectacle | spectacle, gnome-screenshot, mate-utils, xfce4-screenshooter, grim, flameshot, scrot, maim, shutter
 Homepage: https://github.com/kalotrapezis/PixelRuller
 Description: pixel-perfect screenshot measurement and AI UI design tool
  PixelRuller measures and annotates screenshots, designs responsive desktop
