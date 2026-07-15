@@ -20,6 +20,8 @@
 - Auto-detect common KDE, GNOME, MATE, XFCE, Wayland, and X11 screenshot tools,
   fall back between them, and allow any custom capture command through an
   environment-variable template.
+- Default screenshot capture to a 10-second countdown and recognize Kubuntu's
+  `kde-spectacle` package name in package suggestions.
 - Document feature-number/fix-letter versioning.
 
 ## v0.0.1 — 2026-07-15

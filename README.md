@@ -66,8 +66,9 @@ written to `dist/`.
 Screenshot tools are optional at package-install time. Canvas design, JSON
 loading, AI co-design, and code export work without one. For capture, PixelRuller
 tries Spectacle, GNOME/MATE/XFCE Screenshot, Grim, Flameshot, Scrot, Maim, and
-Shutter in order, falling back when an installed tool fails. Check detection with
-`pixelruller --screenshot-backends`.
+Shutter in order, falling back when an installed tool fails. On current Kubuntu,
+the `spectacle` executable is supplied by the `kde-spectacle` package. Check
+detection with `pixelruller --screenshot-backends`.
 
 Any other screenshot program can be used through an override. `{output}` is
 replaced by a temporary PNG path and the command is executed without a shell:
@@ -87,8 +88,8 @@ On launch you pick a **start mode**:
 - **🎨 New canvas** — start an empty design canvas at a size you choose.
 - **📂 Load a design.json** — reopen a previously saved design.
 
-Use the **timer** dropdown next to Capture (3s / 5s / 10s) to delay a shot — a
-full-screen countdown gives you time to open a menu or hover a tooltip first.
+The screenshot timer defaults to **10 seconds**; choose no timer, 3s, 5s, or 10s
+as needed. A full-screen countdown gives you time to open a menu or hover a tooltip.
 The **🆕 New** button reopens the start chooser at any time. Annotated images are
 saved to `~/Εικόνες/PixelRuller/` (your Pictures folder + `PixelRuller`).
 
