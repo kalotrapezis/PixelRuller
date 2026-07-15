@@ -92,25 +92,26 @@ Pieces (each becomes its own build task):
    scrollable **command history** and quick-access "basic functions" on each side.
    Shares the operation grammar with the HTTP command API (Phase 5).
 
-### Windows, states/frames & terminology (decided 2026-07-07)
+### Windows, responsive variants & terminology (updated 2026-07-15)
 
 - **Window = the unit of design** (PC has windows, not phone "screens"; analogous
   to Android *Activities*). A new canvas seeds one Window named **"Session"** by
   default.
-- **Tabs are frames/states of the SAME window**, not different windows — like
-  animation frames. e.g. "default", "scrolled down", "hamburger menu open". Each
-  frame is a variant/state of one window's layout. (Different, unrelated windows
-  are separate top-level windows.) → data model: `window.frames[]`, each frame a
-  set of element overrides/positions; the flow chart connects frames + windows.
+- **Multiple root windows stay visible together** in the canvas window table.
+  They can represent different application windows, responsive sizes of the same
+  interface, or stages such as default/loading/complete. A duplicated stage owns
+  a complete remapped widget tree and records `variantOf` / `variantLabel`.
 - **Place widgets per library layout**: when inserting into a window, position
   using the active toolkit's spacing/margins from `libraries.md` (KDE or GTK 4).
 
-### Window = the single root parent (decided 2026-07-07)
+### Window = a root parent (updated 2026-07-15)
 
-There is **always exactly one Window** — the root parent of the whole UI (the
-"Session"). It can't be deleted; it can **expand, scale, and hold states/frames**.
+There is **always at least one Window**. A new canvas begins with "Session";
+additional roots are added empty or by deep-copying an existing window. The final
+root cannot be deleted.
 The canvas **scale %** (view zoom) is shown so you know if you're at 100%. The
-window's own scale (states/frames) is separate and comes with the frames work.
+window's width and height are design data; duplicated variants reflow their own
+complete widget tree at the chosen dimensions.
 
 ### Sections as layout containers (decided 2026-07-07)
 
@@ -422,7 +423,8 @@ cleanly (current elements are axis-aligned).
   item is *placed*, and automatically has a name and an exact position. So no
   point/area pointing tools here; instead an **assets & shapes palette**
   (icons for shapes and widgets). Design structure comes from three things:
-  - **Tabs — one canvas per window** of the app being designed.
+  - **Visible window table** — all application windows and responsive/state
+    variants remain on the same canvas for side-by-side testing.
   - **Actions** on elements (a button's click, a menu item) declared as data.
   - A **connections view**: every window shown as a label with the list of its
     buttons/actions, and edges connecting each action to the window it opens
@@ -670,10 +672,9 @@ timer, save annotated PNG, export measurement JSON, right-click undo while drawi
   font size, **per-element notes**, and the element's **actions** list.
 - Alignment & distribution tools.
 
-### Phase 3.5 — Windows (tabs) + connections view + auto flow chart
-- **Tabs: one canvas per window.** A design holds multiple windows
-  (`windows[]` in the document); tabs across the top switch between them.
-  Add/rename/duplicate/delete windows.
+### Phase 3.5 — Window table + connections view + auto flow chart
+- **All windows visible on one canvas.** Add an empty toolkit window or deep-copy
+  an existing window as another size/state. Add/rename/duplicate/delete roots.
 - **Actions as data.** Elements (buttons, menu items…) declare named actions
   ("click", "submit"…) with a short description.
 - **Connections view** — a separate view where every window appears as a
@@ -757,9 +758,9 @@ drag-and-drop with other desktop apps. None are on the roadmap through Phase 7.
   separate modes with separate toolsets.** Screenshot mode = pointing/measuring
   (communication → numbers). Canvas mode = placing named assets (design). No
   pointing tools in canvas mode; no asset palette in screenshot mode.
-- ~~One document vs. multiple pages/artboards~~ **DECIDED 2026-07-07: multiple
-  windows as tabs** (`windows[]` in the document), plus a connections view that
-  turns windows + actions into an automatic flow chart.
+- ~~One document vs. multiple pages/artboards~~ **UPDATED 2026-07-15: multiple
+  root windows and their variants remain visible together** in one window table,
+  plus a connections view that turns windows + actions into a flow chart.
 - ~~Coordinate space~~ **DECIDED 2026-07-08: slot-first layout** (see
   "Layout-first canvas"). Position = slot in a container + toolkit spacing;
   absolute px only via per-cell `fixed`.

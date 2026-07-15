@@ -99,7 +99,7 @@
     <div id="countdown" class="countdown"></div>
     <div id="distBox" class="distbox"></div>
     <div id="scaleBox" class="scalebox">100%</div>
-    <button id="addWin" class="addwin only-canvas" title="Add the active toolkit window preset (new row)">＋</button>
+    <button id="addWin" class="addwin only-canvas" title="Add an empty window or a responsive variant">＋</button>
   </div>
 
   <div id="bottomBar" class="bottombar">
@@ -139,6 +139,45 @@
   </div>
 
   <div id="toast" class="toast"></div>
+
+  <div id="windowDialog" class="window-dialog" hidden>
+    <form id="windowForm" class="window-card">
+      <div class="window-card-head">
+        <div>
+          <div class="window-card-title">Add window</div>
+          <div class="window-card-sub">Create another visible stage for this interface.</div>
+        </div>
+        <button id="windowCancelX" type="button" class="window-close" aria-label="Close">✕</button>
+      </div>
+      <div class="window-modes" role="radiogroup" aria-label="Window source">
+        <label><input type="radio" name="windowMode" value="copy" checked> Duplicate existing</label>
+        <label><input type="radio" name="windowMode" value="empty"> New empty window</label>
+      </div>
+      <label id="windowSourceRow" class="window-field">Existing window
+        <select id="windowSource"></select>
+      </label>
+      <label id="windowToolkitRow" class="window-field" hidden>Toolkit
+        <select id="windowToolkit">
+          <option value="gtk4">GTK 4</option>
+          <option value="kde">KDE</option>
+        </select>
+      </label>
+      <label class="window-field">Stage name
+        <input id="windowName" type="text" value="Responsive variant" placeholder="Compact, Loading, Complete…">
+      </label>
+      <div class="window-size">
+        <label>Width <input id="windowWidth" type="number" min="160" value="600"></label>
+        <span>×</span>
+        <label>Height <input id="windowHeight" type="number" min="120" value="400"></label>
+        <span>px</span>
+      </div>
+      <div class="window-note">Duplicating copies the complete widget tree. Relative layouts reflow at the new size.</div>
+      <div class="window-actions">
+        <button id="windowCancel" type="button">Cancel</button>
+        <button type="submit" class="primary">Add window</button>
+      </div>
+    </form>
+  </div>
 
   <div id="start" class="start">
     <div class="start-card">
