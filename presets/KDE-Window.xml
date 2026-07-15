@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Canonical KDE window direction, supplied by Teo. -->
+<design app="PixelRuller" mode="canvas">
+  <canvas width="1960" height="1120"/>
+  <window name="KDE Window 2" x="60" y="60" w="1840" h="1000">
+    <titlebar name="Title bar" x="60" y="60" w="1840" h="32" fill="#dae0e5" stroke="#c9ced6" z="14"/>
+    <spacer name="Start" x="60" y="60" w="803" h="22" stroke="none" z="15"/>
+    <label name="Window title" x="869" y="60" w="121" h="18" text="KDE Window 2" stroke="#000000" z="16"/>
+    <spacer name="End" x="996" y="60" w="803" h="22" stroke="none" z="17"/>
+    <wincontrols name="Window buttons" x="1804" y="60" w="96" h="26" stroke="none" z="18"/>
+    <menubar name="Menu Bar" x="60" y="92" w="1840" h="26" fill="#dae0e5" stroke="#c9ced6" z="19"/>
+    <menuitem name="File Menu" x="66" y="94" w="48" h="22" radius="2" text="File" icon-size="16" icon-position="left" stroke="#000000" z="20"/>
+    <menuitem name="Edit Menu" x="118" y="94" w="48" h="22" radius="2" text="Edit" icon-size="16" icon-position="left" stroke="#000000" z="21"/>
+    <menuitem name="View Menu" x="170" y="94" w="48" h="22" radius="2" text="View" icon-size="16" icon-position="left" stroke="#000000" z="22"/>
+    <menuitem name="Help Menu" x="222" y="94" w="48" h="22" radius="2" text="Help" icon-size="16" icon-position="left" stroke="#000000" z="23"/>
+    <toolbar name="Main Toolbar" x="60" y="118" w="1840" h="36" fill="#dae0e5" stroke="#c9ced6" z="24"/>
+    <toolbutton name="Tool 1" x="68" y="122" w="28" h="26" radius="3" text="←" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="25"/>
+    <toolbutton name="Tool 2" x="102" y="122" w="28" h="26" radius="3" text="→" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="26"/>
+    <toolbutton name="Tool 3" x="136" y="122" w="28" h="26" radius="3" text="＋" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="27"/>
+    <spacer name="Spacer" x="170" y="122" w="1462" h="22" stroke="none" z="31"/>
+    <searchfield name="Search field" x="1638" y="122" w="220" h="30" radius="3" text="Search…" fill="#ffffff" stroke="#9aa1ac" z="30"/>
+    <toolbutton name="Tool 4" x="1864" y="122" w="28" h="26" radius="3" text="☰" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="28"/>
+    <section name="Content" x="60" y="154" w="1840" h="894" radius="4" text="Content" fill="#ffffff" stroke="#9aa1ac" z="29"/>
+  </window>
+</design>

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PixelRuller
+Comment=Measure screenshots and co-design interfaces with AI
+Exec=pixelruller
+Icon=pixelruller
+Terminal=false
+Categories=Graphics;
+StartupNotify=true
