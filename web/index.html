@@ -280,6 +280,10 @@
             <label>Column span <input id="ppColSpan" type="number" min="1"></label>
             <label>Row span <input id="ppRowSpan" type="number" min="1"></label>
           </div>
+          <div class="pp-row">
+            <label>Hide below W <input id="ppHideBelow" type="number" min="0" placeholder="always visible"></label>
+            <label>Show below W <input id="ppShowBelow" type="number" min="0" placeholder="always visible"></label>
+          </div>
         </div>
       </section>
       <section class="pp-sec">
@@ -340,6 +344,7 @@
         <div class="pp-sec-head">Text <span class="pp-caret">▾</span></div>
         <div class="pp-sec-body">
           <label class="pp-full">Text <input id="ppText" type="text"></label>
+          <label class="pp-check" id="ppCaptionRow" hidden><input id="ppShowCaption" type="checkbox"> Show section caption</label>
           <label class="pp-slider">Font <input id="ppFont" type="range" min="6" max="96" step="1"><span id="ppFontv" class="pp-val">14</span></label>
           <div class="pp-row">
             <label>Align H
@@ -349,6 +354,9 @@
               <select id="ppAlignV"><option value="top">top</option><option value="middle" selected>middle</option><option value="bottom">bottom</option></select>
             </label>
           </div>
+          <label>Overflow
+            <select id="ppTextOverflow"><option value="wrap">wrap</option><option value="ellipsis">ellipsis</option><option value="clip">clip</option></select>
+          </label>
           <label class="pp-full">Text color <input id="ppTextColor" type="color"><button class="pp-copy" data-copy="ppTextColor" title="Copy color" tabindex="-1">⧉</button></label>
         </div>
       </section>
@@ -381,6 +389,17 @@
           <label class="pp-check" id="ppScrollBindRow"><input id="ppScrollBind" type="checkbox"> Bind to parent scrolling</label>
         </div>
       </section>
+      <section class="pp-sec" id="ppInteractionSec" hidden>
+        <div class="pp-sec-head">Interaction <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-check"><input id="ppInteractionEnabled" type="checkbox"> Enable interaction</label>
+          <label class="pp-full" id="ppToggleTargetRow">Toggle element
+            <input id="ppToggleTarget" type="text" list="ppTargetOptions" placeholder="element name or id">
+            <datalist id="ppTargetOptions"></datalist>
+          </label>
+          <div class="pp-note" id="ppInteractionNote">The selected control will hide/show its target in the canvas and generated HTML.</div>
+        </div>
+      </section>
       <section class="pp-sec" id="ppLayoutSec">
         <div class="pp-sec-head">Layout <span class="pp-caret">▾</span></div>
         <div class="pp-sec-body">
@@ -388,7 +407,10 @@
             <select id="ppLayout"><option value="none">none</option><option value="vertical">vertical</option><option value="horizontal">horizontal</option><option value="table">table</option></select>
           </label>
           <label>Align
-            <select id="ppAlign"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+            <select id="ppAlign"><option value="start">start</option><option value="center">center</option><option value="end">end</option><option value="stretch">stretch</option></select>
+          </label>
+          <label>Justify
+            <select id="ppJustify"><option value="start">start</option><option value="center">center</option><option value="end">end</option><option value="space-between">space between</option><option value="space-around">space around</option><option value="space-evenly">space evenly</option></select>
           </label>
           <label>Gap <input id="ppGap" type="number" min="0"></label>
           <label>Columns <input id="ppCols" type="number" min="1"></label>

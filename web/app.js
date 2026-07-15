@@ -224,6 +224,7 @@ function drawScene(g, tf, W, H, opts = {}) {
 
   for (const i of zOrder(false)) { // back-to-front
     const s = state.shapes[i];
+    if (isElement(s) && !responsiveVisible(s)) continue;
     const showText = state.showNumbers;
     if (s.type === "point") drawPoint(g, tf, s, showText);
     else if (s.type === "area") drawArea(g, tf, s, false, showText);
@@ -244,6 +245,8 @@ function drawScene(g, tf, W, H, opts = {}) {
     const s = state.shapes[i];
     if (isComposite(s)) drawCompositeBorder(g, tf, s);
   }
+  for (const c of state.shapes.filter(s => isContainer(s) && responsiveVisible(s) && s.overflow === "scroll"))
+    drawAutoScrollbars(g, tf, c);
 
   // Marquee rectangle while rubber-band selecting.
   if (opts.cursor && state.drag && state.drag.kind === "marquee") {
@@ -298,11 +301,33 @@ function drawScene(g, tf, W, H, opts = {}) {
 
 function containerViewport(c) {
   const P = side4(c.padding, 12);
-  const head = c.widget === "window" ? Math.min(44, c.h * 0.18) : c.widget === "section" ? 22 : 0;
+  const head = containerHeadOffset(c);
   return {
     x: c.x + P.l, y: c.y + P.t + head,
     w: Math.max(0, c.w - P.l - P.r), h: Math.max(0, c.h - P.t - P.b - head),
   };
+}
+
+function drawAutoScrollbars(g, tf, c) {
+  if (!(c.scrollMaxX > 0 || c.scrollMaxY > 0)) return;
+  const v = containerViewport(c), p = toScreen(tf, v.x, v.y);
+  const w = v.w * tf.scale, h = v.h * tf.scale, track = Math.max(4, 6 * tf.scale);
+  g.save();
+  g.fillStyle = "rgba(70,78,90,0.22)";
+  g.strokeStyle = "rgba(130,142,160,0.7)";
+  if (c.scrollMaxY > 0) {
+    const total = v.h + c.scrollMaxY, thumbH = Math.max(18 * tf.scale, h * v.h / total);
+    const y = p.y + (h - thumbH) * ((c.scrollY || 0) / c.scrollMaxY);
+    g.fillRect(p.x + w - track, p.y, track, h);
+    g.strokeRect(p.x + w - track + 0.5, y + 0.5, track - 1, thumbH - 1);
+  }
+  if (c.scrollMaxX > 0) {
+    const total = v.w + c.scrollMaxX, thumbW = Math.max(18 * tf.scale, w * v.w / total);
+    const x = p.x + (w - thumbW) * ((c.scrollX || 0) / c.scrollMaxX);
+    g.fillRect(p.x, p.y + h - track, w, track);
+    g.strokeRect(x + 0.5, p.y + h - track + 0.5, thumbW - 1, track - 1);
+  }
+  g.restore();
 }
 
 // Flat z-order rendering still honors nested overflow by clipping each element
@@ -321,6 +346,57 @@ function clipOverflowAncestors(g, tf, s) {
     const v = containerViewport(c), a = toScreen(tf, v.x, v.y);
     g.beginPath(); g.rect(a.x, a.y, v.w * tf.scale, v.h * tf.scale); g.clip();
   }
+}
+
+function textLines(g, text, maxWidth, mode = "wrap") {
+  const raw = String(text ?? "");
+  if (mode === "clip") return raw.split("\n").slice(0, 1);
+  if (mode === "ellipsis") {
+    if (g.measureText(raw).width <= maxWidth) return [raw];
+    let out = raw;
+    while (out && g.measureText(out + "…").width > maxWidth) out = out.slice(0, -1);
+    return [out + "…"];
+  }
+  const lines = [];
+  for (const para of raw.split("\n")) {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (!words.length) { lines.push(""); continue; }
+    let line = "";
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && g.measureText(next).width > maxWidth) { lines.push(line); line = word; }
+      else line = next;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+function drawTextBox(g, tf, s, text, bounds, defaults = {}) {
+  const pad = (defaults.pad ?? 8) * tf.scale;
+  const fs = Math.max(7, (s.fontSize || 14) * tf.scale);
+  const ah = s.alignH || defaults.h || "center", av = s.alignV || defaults.v || "middle";
+  const mode = s.textOverflow || "wrap";
+  const innerW = Math.max(1, bounds.w - pad * 2), innerH = Math.max(1, bounds.h - pad * 2);
+  g.save();
+  g.beginPath(); g.rect(bounds.x, bounds.y, bounds.w, bounds.h); g.clip();
+  g.fillStyle = defaults.color || s.textColor || "#111827";
+  g.font = `${fs}px system-ui, sans-serif`;
+  g.textAlign = ah;
+  g.textBaseline = "top";
+  let lines = textLines(g, text, innerW, mode);
+  const lineH = fs * 1.25, maxLines = Math.max(1, Math.floor(innerH / lineH));
+  if (mode === "wrap" && lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    let last = lines[maxLines - 1];
+    while (last && g.measureText(last + "…").width > innerW) last = last.slice(0, -1);
+    lines[maxLines - 1] = last + "…";
+  }
+  const totalH = lines.length * lineH;
+  const x = ah === "left" ? bounds.x + pad : ah === "right" ? bounds.x + bounds.w - pad : bounds.x + bounds.w / 2;
+  let y = av === "top" ? bounds.y + pad : av === "bottom" ? bounds.y + bounds.h - pad - totalH : bounds.y + (bounds.h - totalH) / 2;
+  for (const line of lines) { g.fillText(line, x, y); y += lineH; }
+  g.restore();
 }
 
 function drawGrid(g, tf, W, H) {
@@ -471,15 +547,7 @@ function drawElement(g, tf, s, showText = true) {
   if (s.filled !== false && s.fill && s.fill !== "none") { g.fillStyle = s.fill; g.fill(); }
   if (s.strokeWidth > 0) { g.strokeStyle = strokeColor(s, s.stroke); g.lineWidth = s.strokeWidth * tf.scale; g.stroke(); }
   if (s.text) {
-    const ah = s.alignH || "center", av = s.alignV || "middle";
-    const pad = 6 * tf.scale;
-    g.fillStyle = s.textColor || "#ffffff";
-    g.font = `${Math.max(7, (s.fontSize || 14) * tf.scale)}px system-ui, sans-serif`;
-    g.textAlign = ah;
-    g.textBaseline = av === "middle" ? "middle" : av;
-    const tx = ah === "left" ? p.x + pad : ah === "right" ? p.x + w - pad : p.x + w / 2;
-    const ty = av === "top" ? p.y + pad : av === "bottom" ? p.y + h - pad : p.y + h / 2;
-    g.fillText(s.text, tx, ty);
+    drawTextBox(g, tf, s, s.text, { x: p.x, y: p.y, w, h }, { h: "center", v: "middle", pad: 6, color: s.textColor || "#ffffff" });
   }
   g.restore();
   if (showText && s.name) {
@@ -496,15 +564,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
   // can reserve space for indicators/icons while sharing the same alignment.
   const alignedText = (str, color, defAlign, bounds = null, defAlignV = "middle") => {
     const b = bounds || { x: p.x, y: p.y, w, h };
-    const ah = s.alignH || defAlign || "center", av = s.alignV || defAlignV;
-    const pad = 8 * tf.scale;
-    g.fillStyle = color || s.textColor || "#111827";
-    g.font = `${fs}px system-ui, sans-serif`;
-    g.textAlign = ah;
-    g.textBaseline = av === "middle" ? "middle" : av;
-    const tx = ah === "left" ? b.x + pad : ah === "right" ? b.x + b.w - pad : b.x + b.w / 2;
-    const ty = av === "top" ? b.y + pad : av === "bottom" ? b.y + b.h - pad : b.y + b.h / 2;
-    g.fillText(str, tx, ty);
+    drawTextBox(g, tf, s, str, b, { h: defAlign || "center", v: defAlignV, color });
   };
   const boxText = (str, color, defAlign) => alignedText(str, color, defAlign);
   // Draw an optional SVG asset together with (or instead of) widget text.
@@ -565,7 +625,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       const bs = Math.min(h, 18 * tf.scale);
       box(p.x, cy - bs / 2, bs, bs, s.radius || 3, s.checked ? s.fill : "#ffffff", s.stroke);
       if (s.checked) { // check mark
-        g.strokeStyle = "#ffffff"; g.lineWidth = Math.max(1.5, 2 * tf.scale); g.lineCap = "round";
+        g.strokeStyle = "#111827"; g.lineWidth = Math.max(1.5, 2 * tf.scale); g.lineCap = "round";
         g.beginPath();
         g.moveTo(p.x + bs * 0.24, cy);
         g.lineTo(p.x + bs * 0.44, cy + bs * 0.22);
@@ -582,7 +642,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       const kr = h / 2 - 3 * tf.scale;
       const kx = s.on ? p.x + w - kr - 3 * tf.scale : p.x + kr + 3 * tf.scale;
       g.beginPath(); g.arc(kx, cy, Math.max(2, kr), 0, Math.PI * 2);
-      g.fillStyle = "#ffffff"; g.fill();
+      g.fillStyle = s.thumbFill || "#e5e7eb"; g.fill();
       break;
     }
     case "slider": {
@@ -635,7 +695,8 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       g.save(); g.setLineDash([5, 4]);
       box(p.x, p.y, w, h, s.radius || 0, s.fill, s.stroke);
       g.restore();
-      alignedText(s.text || "Section", s.textColor || "#6b7280", "left", null, "top");
+      if (sectionCaptionVisible(s))
+        alignedText(s.text, s.textColor || "#6b7280", "left", null, "top");
       break;
     case "radio": {
       const rr = Math.min(h, 18 * tf.scale) / 2;
@@ -879,8 +940,14 @@ function drawWidget(g, tf, s, p, w, h, showText) {
           else { g.moveTo(bxc - q, byc); g.lineTo(bxc + q, byc); }
           g.stroke();
         } else {
-          const col = ctl === "close" ? "#ff5f57" : ctl === "max" ? "#28c840" : "#febc2e";
-          g.beginPath(); g.arc(bxc, byc, r, 0, Math.PI * 2); g.fillStyle = col; g.fill();
+          g.beginPath(); g.arc(bxc, byc, r, 0, Math.PI * 2);
+          g.fillStyle = "rgba(127,127,127,0.14)"; g.fill();
+          g.strokeStyle = tc; g.beginPath();
+          const q = r * 0.42;
+          if (ctl === "close") { g.moveTo(bxc - q, byc - q); g.lineTo(bxc + q, byc + q); g.moveTo(bxc + q, byc - q); g.lineTo(bxc - q, byc + q); }
+          else if (ctl === "max") { g.rect(bxc - q, byc - q, q * 2, q * 2); }
+          else { g.moveTo(bxc - q, byc); g.lineTo(bxc + q, byc); }
+          g.stroke();
         }
       });
       break;
@@ -1078,6 +1145,20 @@ function side4(v, def = 0) {
   if (typeof v === "number") return { t: v, r: v, b: v, l: v };
   return { t: v.t || 0, r: v.r || 0, b: v.b || 0, l: v.l || 0 };
 }
+
+const normalizeAlign = (v) => ({ left: "start", right: "end" }[v] ||
+  (["start", "center", "end", "stretch"].includes(v) ? v : "start"));
+const normalizeJustify = (v) => ["start", "center", "end", "space-between", "space-around", "space-evenly"].includes(v)
+  ? v : "start";
+const sectionCaptionVisible = (s) => s?.widget === "section" &&
+  (s.showCaption != null ? !!s.showCaption : !!String(s.text || "").trim());
+const containerHeadOffset = (c) => {
+  if (c.widget === "window") {
+    const hasTitlebar = childrenOf(c).some(k => k.widget === "titlebar");
+    return hasTitlebar ? 0 : Math.min(44, c.h * 0.18);
+  }
+  return sectionCaptionVisible(c) ? 22 : 0;
+};
 
 function render() {
   // The live canvas is in device pixels; scale the transform by dpr.
@@ -1411,6 +1492,7 @@ function insertWidget(kind, toolkit, at = null) {
     radius: m.radius || 0, fixed: false, z: nextZ(),
     fontSize: 14, textColor: "#111827",
     ...def.defaults,
+    padding: m.padding ? { ...m.padding } : (def.defaults.padding || 0),
   });
   adoptShape(state.shapes[state.shapes.length - 1]);
   relayout();
@@ -1431,7 +1513,9 @@ function addPresetChild(kind, toolkit, parent, slot, overrides = {}) {
     name: uniqueName(overrides.name || def.label),
     x: parent.x, y: parent.y, w: m.w, h: m.h,
     radius: m.radius || 0, fixed: false, z: nextZ(),
-    fontSize: 14, textColor: "#111827", ...def.defaults, ...overrides,
+    fontSize: 14, textColor: "#111827", ...def.defaults,
+    padding: m.padding ? { ...m.padding } : (def.defaults.padding || 0),
+    ...overrides,
   };
   state.shapes.push(child);
   return child;
@@ -1674,6 +1758,58 @@ function childrenOf(c) {
     (s.parent != null ? s.parent === c.id : parentContainer(s) === c));
 }
 
+function rootWindowOf(s) {
+  let current = s;
+  while (current?.parent) current = byId(current.parent);
+  return isWindow(current) ? current : null;
+}
+
+function responsiveVisible(s) {
+  for (let current = s; current; current = current.parent ? byId(current.parent) : null) {
+    if (current.runtimeVisible === false) return false;
+    const win = rootWindowOf(current), width = win ? Number(win.w) || 0 : Infinity;
+    if (current.runtimeVisible !== true) {
+      if (current.hideBelow > 0 && width < current.hideBelow) return false;
+      if (current.showBelow > 0 && width >= current.showBelow) return false;
+    }
+  }
+  return true;
+}
+
+function interactionTarget(trigger) {
+  const ref = String(trigger?.toggleTarget || "").trim();
+  if (!ref) return null;
+  const root = rootWindowOf(trigger);
+  const scope = root ? [root, ...descendantsOf(root)] : state.shapes;
+  const low = ref.toLowerCase();
+  return scope.find(s => s.id === ref) || scope.find(s => String(s.name || "").toLowerCase() === low) || null;
+}
+
+function interactionTargets(trigger) {
+  const root = rootWindowOf(trigger);
+  const scope = root ? [root, ...descendantsOf(root)] : state.shapes;
+  const refs = [];
+  if (trigger?.interactionEnabled && trigger.toggleTarget) refs.push(trigger.toggleTarget);
+  const triggerRefs = new Set([String(trigger?.id || "").toLowerCase(), String(trigger?.name || "").toLowerCase()]);
+  for (const candidate of scope) {
+    if (!candidate.interactionEnabled || !candidate.interactionControl) continue;
+    if (triggerRefs.has(String(candidate.interactionControl).toLowerCase())) refs.push(candidate.id || candidate.name);
+  }
+  return refs.map(ref => {
+    const low = String(ref).toLowerCase();
+    return scope.find(s => s.id === ref) || scope.find(s => String(s.name || "").toLowerCase() === low);
+  }).filter((s, i, all) => s && all.indexOf(s) === i);
+}
+
+function toggleInteractionTarget(trigger) {
+  const targets = interactionTargets(trigger);
+  if (!targets.length) { toast(`No hide/show interaction for "${trigger?.name || "element"}"`, true); return false; }
+  for (const target of targets) target.runtimeVisible = responsiveVisible(target) ? false : true;
+  relayout(); render();
+  toast(targets.map(target => `${target.name || target.id}: ${responsiveVisible(target) ? "shown" : "hidden"}`).join(" · "));
+  return true;
+}
+
 // Adopt a dropped/inserted element into the container under its center,
 // inserting it at the slot matching its drop position among the siblings.
 function adoptShape(s) {
@@ -1722,14 +1858,42 @@ const percentage = (s, axis) => Math.max(0, Math.min(100,
 // Approximate a widget's natural content size. Toolkit registry metrics remain
 // the floor, while text can expand it. This is deterministic and exportable;
 // native GTK/Qt can refine the final measurement after code generation.
-function hugDimensions(s) {
+function hugDimensions(s, seen = new Set()) {
+  if (seen.has(s)) return { w: s.w || 1, h: s.h || 1 };
+  seen.add(s);
   const def = s.type === "widget" ? WIDGETS[s.widget] : null;
   const metric = def && (def[s.toolkit] || def.gtk4);
   const P = side4(s.padding);
   const fs = s.fontSize || 14;
   const textW = s.text ? Math.ceil(String(s.text).length * fs * 0.62) : 0;
-  const w = Math.max(metric?.w || 24, textW + P.l + P.r + 16);
-  const h = Math.max(metric?.h || 18, fs * 1.45 + P.t + P.b);
+  let w = Math.max(metric?.w || 24, textW + P.l + P.r + 16);
+  const availableTextW = Math.max(1, (s.w || w) - P.l - P.r - 16);
+  const lineCount = s.textOverflow === "wrap" && s.text
+    ? Math.max(1, Math.ceil(textW / availableTextW)) : 1;
+  let h = Math.max(metric?.h || 18, fs * 1.45 * lineCount + P.t + P.b);
+  if (isContainer(s)) {
+    const kids = childrenOf(s).filter(k => !k.fixed).sort((a, b) => slotOf(a) - slotOf(b));
+    if (kids.length) {
+      const gap = Number(s.gap != null ? s.gap : 12) || 0;
+      const boxes = kids.map(k => {
+        const natural = hugDimensions(k, new Set(seen)), M = side4(k.margin);
+        const kw = k.sizeModeX === "hug" ? natural.w : k.w;
+        const kh = k.sizeModeY === "hug" ? natural.h : k.h;
+        return { w: M.l + kw + M.r, h: M.t + kh + M.b };
+      });
+      if ((s.layout || "vertical") === "horizontal") {
+        w = Math.max(w, boxes.reduce((n, b) => n + b.w, 0) + gap * (boxes.length - 1) + P.l + P.r);
+        h = Math.max(h, Math.max(...boxes.map(b => b.h)) + P.t + P.b + containerHeadOffset(s));
+      } else if ((s.layout || "vertical") === "table") {
+        const cols = Math.max(1, Number(s.cols) || 1), rows = Math.ceil(boxes.length / cols);
+        w = Math.max(w, Math.max(...boxes.map(b => b.w)) * cols + gap * (cols - 1) + P.l + P.r);
+        h = Math.max(h, Math.max(...boxes.map(b => b.h)) * rows + gap * (rows - 1) + P.t + P.b + containerHeadOffset(s));
+      } else {
+        w = Math.max(w, Math.max(...boxes.map(b => b.w)) + P.l + P.r);
+        h = Math.max(h, boxes.reduce((n, b) => n + b.h, 0) + gap * (boxes.length - 1) + P.t + P.b + containerHeadOffset(s));
+      }
+    }
+  }
   return { w: bounded(w, s.minW, s.maxW), h: bounded(h, s.minH, s.maxH) };
 }
 
@@ -1741,29 +1905,41 @@ function prepareLayoutSize(s) {
   s.h = bounded(s.h, s.minH, s.maxH);
 }
 
+function distributedMain(justify, free, count, baseGap) {
+  const j = normalizeJustify(justify), room = Math.max(0, free);
+  if (j === "center") return { lead: room / 2, gap: baseGap };
+  if (j === "end") return { lead: room, gap: baseGap };
+  if (j === "space-between" && count > 1) return { lead: 0, gap: baseGap + room / (count - 1) };
+  if (j === "space-around" && count > 0) {
+    const extra = room / count; return { lead: extra / 2, gap: baseGap + extra };
+  }
+  if (j === "space-evenly" && count > 0) {
+    const extra = room / (count + 1); return { lead: extra, gap: baseGap + extra };
+  }
+  return { lead: 0, gap: baseGap };
+}
+
 // Reposition direct children per layout, sizing rules, margins and slots.
 // fixed children remain absolute. Fill/grow and percentage sizing operate on
 // the layout's main axis; wrap starts a new row/column; table honors spans.
 function arrangeInto(c) {
   const P = side4(c.padding, 12), gap = c.gap != null ? c.gap : 12;
-  const align = c.align || "left", layout = c.layout || "vertical";
-  // A window that owns an editable title bar reserves no painted chrome — the
-  // titlebar child sits at slot 0 and provides the bar itself.
-  const hasTitlebar = c.widget === "window" && childrenOf(c).some(k => k.widget === "titlebar");
-  const headOffset = (c.widget === "window" && !hasTitlebar) ? Math.min(44, c.h * 0.18)
-    : c.widget === "section" ? 22 : 0;
+  const align = normalizeAlign(c.align), layout = c.layout || "vertical";
+  const headOffset = containerHeadOffset(c);
   const top = c.y + P.t + headOffset, left = c.x + P.l;
   const innerW = Math.max(1, c.w - P.l - P.r);
   const innerH = Math.max(1, c.h - P.t - P.b - headOffset);
-  const kids = childrenOf(c).filter(s => !s.fixed);
+  const managed = childrenOf(c).filter(s => !s.fixed);
+  managed.sort((a, b) => slotOf(a) - slotOf(b) || a.y - b.y || a.x - b.x);
+  managed.forEach((k, i) => { k.slot = i; });
+  const kids = managed.filter(responsiveVisible);
   if (!kids.length) return 0;
-  kids.sort((a, b) => slotOf(a) - slotOf(b) || a.y - b.y || a.x - b.x);
-  kids.forEach((k, i) => { k.slot = i; prepareLayoutSize(k); });
+  kids.forEach(prepareLayoutSize);
 
   const alignX = (k, M, width = innerW) => align === "center" ? left + (width - k.w) / 2
-    : align === "right" ? left + width - k.w - M.r : left + M.l;
+    : align === "end" ? left + width - k.w - M.r : left + M.l;
   const alignY = (k, M, height = innerH) => align === "center" ? top + (height - k.h) / 2
-    : align === "right" ? top + height - k.h - M.b : top + M.t;
+    : align === "end" ? top + height - k.h - M.b : top + M.t;
 
   if (layout === "horizontal") {
     if (!c.wrap) {
@@ -1789,14 +1965,17 @@ function arrangeInto(c) {
       for (const k of kids) if (k.sizeModeX === "percent")
         k.w = bounded(innerW * percentage(k, "x") / 100, k.minW, k.maxW);
     }
-    let x = left, y = top, lineH = 0;
+    const usedW = kids.reduce((sum, k) => { const M = side4(k.margin); return sum + M.l + k.w + M.r; }, 0)
+      + gap * Math.max(0, kids.length - 1);
+    const dist = c.wrap ? { lead: 0, gap } : distributedMain(c.justify, innerW - usedW, kids.length, gap);
+    let x = left + dist.lead, y = top, lineH = 0;
     for (const k of kids) {
       const M = side4(k.margin), totalW = M.l + k.w + M.r;
       if (c.wrap && x > left && x + totalW > left + innerW) { x = left; y += lineH + gap; lineH = 0; }
-      if (k.sizeModeY === "fill" && !c.wrap) k.h = bounded(innerH - M.t - M.b, k.minH, k.maxH);
+      if ((k.sizeModeY === "fill" || align === "stretch") && !c.wrap) k.h = bounded(innerH - M.t - M.b, k.minH, k.maxH);
       else if (k.sizeModeY === "percent") k.h = bounded((innerH - M.t - M.b) * percentage(k, "y") / 100, k.minH, k.maxH);
       k.x = Math.round(x + M.l); k.y = Math.round(c.wrap ? y + M.t : alignY(k, M));
-      x += totalW + gap; lineH = Math.max(lineH, M.t + k.h + M.b);
+      x += totalW + dist.gap; lineH = Math.max(lineH, M.t + k.h + M.b);
     }
   } else if (layout === "table") {
     const cols = Math.max(1, Math.round(c.cols || Math.ceil(Math.sqrt(kids.length))));
@@ -1826,7 +2005,8 @@ function arrangeInto(c) {
       if (p.k.sizeModeY === "fill") p.k.h = bounded(cellH - p.M.t - p.M.b, p.k.minH, p.k.maxH);
       else if (p.k.sizeModeY === "percent") p.k.h = bounded((cellH - p.M.t - p.M.b) * percentage(p.k, "y") / 100, p.k.minH, p.k.maxH);
       const cellX = left + p.col * (colW + gap);
-      p.k.x = Math.round(p.k.sizeModeX === "fill" || align === "left" ? cellX + p.M.l
+      if (align === "stretch" && p.k.sizeModeX !== "fixed") p.k.w = bounded(p.cellW - p.M.l - p.M.r, p.k.minW, p.k.maxW);
+      p.k.x = Math.round(p.k.sizeModeX === "fill" || align === "start" || align === "stretch" ? cellX + p.M.l
         : align === "center" ? cellX + (p.cellW - p.k.w) / 2 : cellX + p.cellW - p.k.w - p.M.r);
       p.k.y = Math.round(rowY[p.row] + p.M.t);
     }
@@ -1854,14 +2034,17 @@ function arrangeInto(c) {
       for (const k of kids) if (k.sizeModeY === "percent")
         k.h = bounded(innerH * percentage(k, "y") / 100, k.minH, k.maxH);
     }
-    let x = left, y = top, lineW = 0;
+    const usedH = kids.reduce((sum, k) => { const M = side4(k.margin); return sum + M.t + k.h + M.b; }, 0)
+      + gap * Math.max(0, kids.length - 1);
+    const dist = c.wrap ? { lead: 0, gap } : distributedMain(c.justify, innerH - usedH, kids.length, gap);
+    let x = left, y = top + dist.lead, lineW = 0;
     for (const k of kids) {
       const M = side4(k.margin), totalH = M.t + k.h + M.b;
       if (c.wrap && y > top && y + totalH > top + innerH) { y = top; x += lineW + gap; lineW = 0; }
-      if (k.sizeModeX === "fill" && !c.wrap) k.w = bounded(innerW - M.l - M.r, k.minW, k.maxW);
+      if ((k.sizeModeX === "fill" || align === "stretch") && !c.wrap) k.w = bounded(innerW - M.l - M.r, k.minW, k.maxW);
       else if (k.sizeModeX === "percent") k.w = bounded((innerW - M.l - M.r) * percentage(k, "x") / 100, k.minW, k.maxW);
       k.x = Math.round(c.wrap ? x + M.l : alignX(k, M)); k.y = Math.round(y + M.t);
-      y += totalH + gap; lineW = Math.max(lineW, M.l + k.w + M.r);
+      y += totalH + dist.gap; lineW = Math.max(lineW, M.l + k.w + M.r);
     }
   }
   // Derive overflow extents from laid-out content. Scroll offsets are applied
@@ -1936,7 +2119,14 @@ function relayout() {
   // arrangeInto's own `c.layout || "vertical"`); only "none" opts out.
   const cs = state.shapes.filter(c => isContainer(c) && c.layout !== "none");
   cs.sort((a, b) => (isWindow(b) ? 1 : 0) - (isWindow(a) ? 1 : 0) || b.w * b.h - a.w * a.h);
-  for (const c of cs) arrangeInto(c);
+  // Nested hug sizes can change an ancestor, which in turn changes wrapped
+  // descendants. A few deterministic passes converge the tree without making
+  // layout depend on selection or paint timing.
+  for (let pass = 0; pass < 4; pass++) {
+    for (const c of [...cs].reverse()) prepareLayoutSize(c);
+    layoutWindows();
+    for (const c of cs) arrangeInto(c);
+  }
   refreshTree();
 }
 
@@ -2054,6 +2244,7 @@ function hitTest(p) {
   const tol = 8 / state.view.scale; // ~8 screen px, in image units
   for (const i of zOrder(true)) { // front-to-back
     const s = state.shapes[i];
+    if (isElement(s) && !responsiveVisible(s)) continue;
     if (isElement(s) && !pointInsideOverflowAncestors(s, p)) continue;
     if (s.type === "point") {
       if (dist(p, s) <= Math.max(tol, 6)) return selectionIndexFor(s, i);
@@ -2159,9 +2350,9 @@ const WIDGETS = {
   window:   { label: "Window",   cat: "Sections", gtk4: { w: 600, h: 400, radius: 12 }, kde: { w: 600, h: 400, radius: 4 },
               defaults: { text: "Window", fill: "#ffffff", stroke: "#c9ced6", strokeWidth: 1, textColor: "#111827" } },
   section:  { label: "Section",  cat: "Sections", gtk4: { w: 240, h: 160, radius: 8 }, kde: { w: 240, h: 160, radius: 4 },
-              defaults: { text: "Section", fill: "none", stroke: "#9aa1ac", strokeWidth: 1, textColor: "#6b7280" } },
+              defaults: { text: "Section", showCaption: true, fill: "none", stroke: "#9aa1ac", strokeWidth: 1, textColor: "#6b7280" } },
   // ----- Input -----
-  button:   { label: "Button",   cat: "Input", gtk4: { w: 120, h: 34, radius: 8 }, kde: { w: 110, h: 30, radius: 4 },
+  button:   { label: "Button",   cat: "Input", gtk4: { w: 120, h: 34, radius: 8, padding: { t: 6, r: 12, b: 6, l: 12 } }, kde: { w: 110, h: 30, radius: 4, padding: { t: 4, r: 8, b: 4, l: 8 } },
               defaults: { text: "Button", fill: "#e7eaee", stroke: "#c9ced6", strokeWidth: 1, textColor: "#111827", alignH: "center", iconSize: 18, iconPosition: "left", iconGap: 6 } },
   textbox:  { label: "Textbox",  cat: "Input", gtk4: { w: 220, h: 34, radius: 8 }, kde: { w: 220, h: 30, radius: 3 },
               defaults: { text: "Enter text…", fill: "#ffffff", stroke: "#9aa1ac", strokeWidth: 1, textColor: "#6b7280", alignH: "left", iconSize: 16, iconPosition: "right", iconGap: 6 } },
@@ -2176,7 +2367,7 @@ const WIDGETS = {
   dropdown: { label: "Dropdown", cat: "Input", gtk4: { w: 200, h: 34, radius: 8 }, kde: { w: 200, h: 30, radius: 3 },
               defaults: { text: "Select…", fill: "#ffffff", stroke: "#9aa1ac", strokeWidth: 1, textColor: "#6b7280", alignH: "left" } },
   scrollbar:{ label: "Scrollbar",cat: "Input", gtk4: { w: 220, h: 12, radius: 6 }, kde: { w: 220, h: 14, radius: 3 },
-              defaults: { value: 30, fill: "#dfe3e8", thumbFill: "#7b8490", stroke: "#c9ced6", strokeWidth: 0 } },
+              defaults: { value: 30, interactionEnabled: true, fill: "#dfe3e8", thumbFill: "#7b8490", stroke: "#c9ced6", strokeWidth: 0 } },
   // ----- Navigation / window chrome -----
   menubar:  { label: "Menubar",  cat: "Navigation", gtk4: { w: 360, h: 32, radius: 0 }, kde: { w: 360, h: 26, radius: 0 },
               defaults: { text: "", fill: "#f1f3f5", stroke: "#c9ced6", strokeWidth: 1, textColor: "#111827", layout: "horizontal", align: "left", gap: 4, padding: { t: 2, r: 6, b: 2, l: 6 } } },
@@ -2184,7 +2375,7 @@ const WIDGETS = {
               defaults: { count: 5, fill: "#f1f3f5", stroke: "#c9ced6", strokeWidth: 1, textColor: "#59636e", layout: "horizontal", align: "left", gap: 6, padding: { t: 4, r: 8, b: 4, l: 8 } } },
   menuitem: { label: "Menu item", cat: "Navigation", gtk4: { w: 52, h: 28, radius: 4 }, kde: { w: 48, h: 22, radius: 2 },
               defaults: { text: "Menu", fill: "none", stroke: "#000000", strokeWidth: 0, textColor: "#111827", iconSize: 16, iconPosition: "left", iconGap: 5 } },
-  toolbutton:{ label: "Tool button", cat: "Navigation", gtk4: { w: 30, h: 30, radius: 6 }, kde: { w: 28, h: 26, radius: 3 },
+  toolbutton:{ label: "Tool button", cat: "Navigation", gtk4: { w: 30, h: 30, radius: 6, padding: { t: 6, r: 6, b: 6, l: 6 } }, kde: { w: 28, h: 26, radius: 3, padding: { t: 4, r: 5, b: 4, l: 5 } },
               defaults: { text: "+", fill: "#e7eaee", stroke: "#c9ced6", strokeWidth: 0, textColor: "#59636e", iconSize: 18, iconPosition: "only", iconGap: 4 } },
   separator:{ label: "Separator", cat: "Navigation", gtk4: { w: 8, h: 28, radius: 0 }, kde: { w: 8, h: 24, radius: 0 },
               defaults: { fill: "none", stroke: "#9aa1ac", strokeWidth: 1, lines: 1 } },
@@ -2346,10 +2537,10 @@ function duplicateSelected() { copySelected(); pasteClipboard(); }
 
 // ----- Style clipboard: copy an element's look, apply it to others -------
 const STYLE_KEYS = ["fill", "filled", "stroke", "strokeWidth", "strokeOpacity", "radius",
-  "opacity", "fontSize", "textColor", "alignH", "alignV", "margin", "padding", "gap",
+  "opacity", "fontSize", "textColor", "alignH", "alignV", "textOverflow", "showCaption", "margin", "padding", "gap",
   "sizeModeX", "sizeModeY", "widthPercent", "heightPercent", "grow",
-  "minW", "maxW", "minH", "maxH", "colSpan", "rowSpan",
-  "wrap", "cols", "overflow"];
+  "minW", "maxW", "minH", "maxH", "colSpan", "rowSpan", "hideBelow", "showBelow",
+  "wrap", "cols", "align", "justify", "overflow"];
 let styleClipboard = null;
 function copyStyle() {
   const s = state.selected !== null ? state.shapes[state.selected] : null;
@@ -2466,18 +2657,122 @@ const parseVal = (v) => {
 };
 const tokenize = (str) => (str.match(/"[^"]*"|\S+/g) || []).map(t => t.replace(/^"|"$/g, ""));
 
+const SET_ENUMS = {
+  layout: ["none", "vertical", "horizontal", "table"], align: ["start", "center", "end", "stretch"],
+  justify: ["start", "center", "end", "space-between", "space-around", "space-evenly"],
+  sizeModeX: ["fixed", "fill", "percent", "hug"], sizeModeY: ["fixed", "fill", "percent", "hug"],
+  overflow: ["visible", "clip", "scroll"], textOverflow: ["wrap", "ellipsis", "clip"],
+  alignH: ["left", "center", "right"], alignV: ["top", "middle", "bottom"],
+  toolkit: ["gtk4", "kde"], buttonSide: ["left", "right"], orientation: ["horizontal", "vertical"],
+  resizeMode: ["reflow", "scale"], iconPosition: ["left", "right", "top", "bottom", "only"],
+};
+const SET_BOOLEANS = new Set(["fixed", "filled", "wrap", "checked", "on", "bindScroll", "showCaption", "interactionEnabled"]);
+const SET_STRINGS = new Set(["name", "text", "fill", "stroke", "textColor", "icon", "controls", "barFill", "toggleTarget", "interactionControl"]);
+const SET_NUMBERS = {
+  x: [-Infinity, Infinity], y: [-Infinity, Infinity], w: [1, Infinity], h: [1, Infinity], z: [-Infinity, Infinity],
+  opacity: [0, 100], strokeWidth: [0, Infinity], strokeOpacity: [0, 100], radius: [0, Infinity],
+  fontSize: [6, 96], gap: [0, Infinity], cols: [1, Infinity, true], scrollX: [0, Infinity], scrollY: [0, Infinity],
+  value: [0, 100], count: [0, 50, true], active: [0, Infinity, true], lines: [1, 2, true],
+  iconSize: [8, 128], iconGap: [0, Infinity], grow: [0, Infinity], minW: [0, Infinity], maxW: [0, Infinity],
+  minH: [0, Infinity], maxH: [0, Infinity], widthPercent: [0, 100], heightPercent: [0, 100],
+  colSpan: [1, Infinity, true], rowSpan: [1, Infinity, true], slot: [0, Infinity],
+  hideBelow: [0, Infinity], showBelow: [0, Infinity],
+};
+
+function validatedSet(path, raw) {
+  const [prop, side] = path;
+  if (path.length > 2) return { error: "set paths support one optional side only" };
+  if (["__proto__", "prototype", "constructor"].includes(prop) || ["__proto__", "prototype", "constructor"].includes(side))
+    return { error: "unsafe property name" };
+  if (side != null) {
+    if (!["margin", "padding"].includes(prop)) return { error: `nested property is only valid for margin or padding` };
+    if (!["t", "r", "b", "l"].includes(side)) return { error: `unknown side "${side}" — use t, r, b or l` };
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? { value: n } : { error: `${prop}.${side} must be a number ≥ 0` };
+  }
+  if (prop === "align") {
+    const value = normalizeAlign(String(raw));
+    if (!["left", "right", ...SET_ENUMS.align].includes(String(raw))) return { error: `align must be ${SET_ENUMS.align.join(", ")}` };
+    return { value };
+  }
+  if (SET_ENUMS[prop]) {
+    const value = String(raw);
+    return SET_ENUMS[prop].includes(value) ? { value } : { error: `${prop} must be ${SET_ENUMS[prop].join(", ")}` };
+  }
+  if (SET_BOOLEANS.has(prop)) return typeof raw === "boolean" ? { value: raw } : { error: `${prop} must be true or false` };
+  if (SET_STRINGS.has(prop)) return { value: String(raw) };
+  if (SET_NUMBERS[prop]) {
+    const n = Number(raw), [min, max, integer] = SET_NUMBERS[prop];
+    if (!Number.isFinite(n) || n < min || n > max || (integer && !Number.isInteger(n)))
+      return { error: `${prop} must be ${integer ? "an integer" : "a number"} from ${min} to ${max}` };
+    return { value: n };
+  }
+  if (prop === "margin" || prop === "padding") {
+    const n = Number(raw); return Number.isFinite(n) && n >= 0 ? { value: side4(n) } : { error: `${prop} must be a number ≥ 0 or use ${prop}.t/r/b/l` };
+  }
+  return { error: `unknown set property "${prop}"` };
+}
+
 const CMD_HELP =
   'add <widget|rect|ellipse> [into <container>] · add window empty [gtk4|kde] [w] [h] [name] · ' +
   'add window copy <source> [w] [h] [name] · set <el> <prop>[.<side>] <value> · ' +
   'move <el> <dx> <dy> · move <el> into <container> [<slot>] · resize <el> <w> <h> · ' +
   'del <el> · copy <el> [n] · rename <el> <name> · select <el> · arrange <container> · ' +
   'make-widget [name] · enter <composite> · exit · ungroup <composite|section> · ' +
-  'theme <GTK light|GTK dark|KDE light|KDE dark> · list · help';
+  'theme <GTK light|GTK dark|KDE light|KDE dark> · tree [root] [all] · inspect <el> · ' +
+  'selection · ui <hide|show|toggle> · list · help';
 
 function runCommand(input) {
   const res = execCommand(input);
   cmdLog.push({ cmd: input, ok: res.ok, msg: res.msg });
   return res;
+}
+
+let commandFocusNumbers = null;
+function setCommandFocus(hidden) {
+  const numbers = document.getElementById("showNumbers");
+  if (hidden && !document.body.classList.contains("command-focus")) {
+    commandFocusNumbers = state.showNumbers;
+    numbers.checked = false;
+    state.showNumbers = false;
+  } else if (!hidden && document.body.classList.contains("command-focus") && commandFocusNumbers !== null) {
+    numbers.checked = commandFocusNumbers;
+    state.showNumbers = commandFocusNumbers;
+    commandFocusNumbers = null;
+  }
+  document.body.classList.toggle("command-focus", hidden);
+  resizeCanvas(); fitToView(); render();
+}
+
+function commandShapeLine(s, depth = 0) {
+  const index = state.shapes.indexOf(s);
+  const selected = state.selection.includes(index);
+  const frame = isComposite(s) ? (s.frame || {}) : s;
+  const flags = [
+    responsiveVisible(s) ? "visible" : "hidden",
+    s.fixed ? "fixed" : "managed",
+  ];
+  const color = frame.fill && frame.fill !== "none" ? frame.fill : "none";
+  return {
+    selected,
+    text: `${selected ? "▶" : " "} ${"  ".repeat(depth)}${s.name || s.id} ` +
+      `[${s.widget || s.type}] id=${s.id || "—"} slot=${s.slot ?? "—"} ` +
+      `x=${Math.round(s.x || 0)} y=${Math.round(s.y || 0)} ` +
+      `w=${Math.round(s.w || 0)} h=${Math.round(s.h || 0)} ` +
+      `fill=${color} stroke=${frame.stroke || "none"} ${flags.join(" ")}`,
+  };
+}
+
+function commandTree(rootRef = "", includeHidden = false) {
+  const roots = rootRef ? [findShape(rootRef)].filter(Boolean) : state.shapes.filter(isWindow);
+  if (!roots.length) return { error: `no root "${rootRef}"` };
+  const lines = [];
+  const walk = (s, depth) => {
+    if (includeHidden || responsiveVisible(s)) lines.push(commandShapeLine(s, depth));
+    if (isContainer(s)) for (const child of childrenOf(s).sort((a, b) => slotOf(a) - slotOf(b))) walk(child, depth + 1);
+  };
+  for (const root of roots) walk(root, 0);
+  return { lines, text: lines.map(line => line.text).join("\n") || "empty design" };
 }
 
 function execCommand(input) {
@@ -2495,6 +2790,28 @@ function execCommand(input) {
     switch (verb) {
       case "help":
         return { ok: true, msg: CMD_HELP };
+
+      case "ui": {
+        const mode = (t[1] || "toggle").toLowerCase();
+        if (!["hide", "show", "toggle"].includes(mode)) return fail("ui <hide|show|toggle>");
+        const hidden = mode === "toggle" ? !document.body.classList.contains("command-focus") : mode === "hide";
+        setCommandFocus(hidden);
+        return { ok: true, msg: `editor UI ${hidden ? "hidden" : "shown"}` };
+      }
+
+      case "inspect": {
+        const s = findShape(t[1]);
+        if (!s) return fail(`no element "${t[1] || ""}"`);
+        const data = { ...s, visibleNow: responsiveVisible(s), selected: state.selection.includes(state.shapes.indexOf(s)),
+          children: isContainer(s) ? childrenOf(s).sort((a, b) => slotOf(a) - slotOf(b)).map(k => k.name || k.id) : [] };
+        return { ok: true, msg: JSON.stringify(data, null, 2), data: { kind: "inspect", value: data } };
+      }
+
+      case "selection": {
+        const lines = state.selection.map(i => state.shapes[i]).filter(Boolean).map(s => commandShapeLine(s));
+        return { ok: true, msg: lines.map(line => line.text).join("\n") || "no selection",
+          data: { kind: "selection", lines } };
+      }
 
       case "add": {
         const kind = (t[1] || "").toLowerCase();
@@ -2548,11 +2865,14 @@ function execCommand(input) {
         if (!s) return fail(`no element "${t[1]}"`);
         const path = (t[2] || "").split(".");
         if (!path[0] || t[3] === undefined) return fail("set <el> <prop> <value>");
-        const val = parseVal(t.slice(3).join(" "));
+        const raw = parseVal(t.slice(3).join(" "));
+        const checked = validatedSet(path, raw);
+        if (checked.error) return fail(checked.error);
+        const val = checked.value;
         if (path.length === 2) {
-          if (path[0] === "margin" || path[0] === "padding") s[path[0]] = side4(s[path[0]]);
-          if (typeof s[path[0]] !== "object" || s[path[0]] == null) s[path[0]] = {};
-          s[path[0]][path[1]] = val;
+          const next = side4(s[path[0]]);
+          next[path[1]] = val;
+          s[path[0]] = next;
         } else {
           s[path[0]] = val;
         }
@@ -2672,19 +2992,13 @@ function execCommand(input) {
         return { ok: true, msg: `theme ${key}` };
       }
 
-      case "list": {
-        const lines = [];
-        const walk = (c, d) => {
-          for (const k of childrenOf(c).sort((a, b) => slotOf(a) - slotOf(b))) {
-            lines.push("  ".repeat(d) + `${k.name || k.id} [${k.widget || k.type}]${k.fixed ? " 📌" : ""}`);
-            if (isContainer(k)) walk(k, d + 1);
-          }
-        };
-        for (const w of state.shapes.filter(isWindow)) {
-          lines.push(`${w.name || w.id} [window]`);
-          walk(w, 1);
-        }
-        return { ok: true, msg: lines.join("\n") || "empty design" };
+      case "tree": case "list": {
+        const args = t.slice(1);
+        const includeHidden = args.some(arg => ["all", "--all"].includes(arg.toLowerCase()));
+        const rootRef = args.find(arg => !["all", "--all"].includes(arg.toLowerCase())) || "";
+        const tree = commandTree(rootRef, includeHidden);
+        if (tree.error) return fail(tree.error);
+        return { ok: true, msg: tree.text, data: { kind: "tree", lines: tree.lines } };
       }
 
       default:
@@ -2932,9 +3246,14 @@ function syncPropPanel() {
   PP("MinW").value = s.minW || 0; PP("MaxW").value = s.maxW || "";
   PP("MinH").value = s.minH || 0; PP("MaxH").value = s.maxH || "";
   PP("ColSpan").value = s.colSpan || 1; PP("RowSpan").value = s.rowSpan || 1;
+  PP("HideBelow").value = s.hideBelow || ""; PP("ShowBelow").value = s.showBelow || "";
   const textAlign = defaultTextAlign(s);
   PP("AlignH").value = s.alignH || textAlign.h;
   PP("AlignV").value = s.alignV || textAlign.v;
+  PP("TextOverflow").value = s.textOverflow || "wrap";
+  const caption = s.type === "widget" && s.widget === "section";
+  document.getElementById("ppCaptionRow").hidden = !caption;
+  PP("ShowCaption").checked = caption && sectionCaptionVisible(s);
   PP("TextColor").value = s.textColor || "#ffffff";
   const composite = isComposite(s);
   document.getElementById("ppCompositeSec").hidden = !composite;
@@ -2958,12 +3277,40 @@ function syncPropPanel() {
     PP("IconPosition").value = s.iconPosition || (s.widget === "toolbutton" ? "only" : "left");
     PP("IconGap").value = Math.max(0, Number(s.iconGap) || 6);
   }
+  const interactionTrigger = s.type === "widget" && ["button", "toolbutton", "menuitem"].includes(s.widget);
+  const interactiveScroll = (isContainer(s) && s.overflow === "scroll") || s.widget === "scrollbar";
+  const interactionTargetContainer = s.type === "widget" && ["section", "composite"].includes(s.widget) && !interactiveScroll;
+  const interactionCapable = interactionTrigger || interactiveScroll || interactionTargetContainer;
+  document.getElementById("ppInteractionSec").hidden = !interactionCapable;
+  if (interactionCapable) {
+    PP("InteractionEnabled").checked = s.interactionEnabled != null ? !!s.interactionEnabled : interactiveScroll;
+    PP("ToggleTarget").value = interactionTargetContainer ? (s.interactionControl || "") : (s.toggleTarget || "");
+    const targetRow = document.getElementById("ppToggleTargetRow");
+    targetRow.hidden = interactiveScroll && !interactionTrigger;
+    targetRow.firstChild.nodeValue = interactionTargetContainer ? "Toggle control " : "Hide/show target ";
+    document.getElementById("ppInteractionNote").textContent = interactiveScroll && !interactionTrigger
+      ? "When enabled, wheel/range input scrolls this container instead of zooming the canvas."
+      : interactionTargetContainer
+        ? "Choose the Button or Tool button that will hide/show this element."
+        : "The selected control will hide/show its target in the canvas and generated HTML.";
+    const options = document.getElementById("ppTargetOptions");
+    options.innerHTML = "";
+    const seen = new Set();
+    for (const candidate of state.shapes.filter(isElement)) {
+      const name = candidate.name || candidate.id;
+      if (!name || candidate === s || seen.has(name)) continue;
+      seen.add(name);
+      const option = document.createElement("option"); option.value = name; option.label = candidate.id || "";
+      options.appendChild(option);
+    }
+  }
   // Layout section only applies to containers (Section / Window).
   const container = isContainer(s);
   document.getElementById("ppLayoutSec").hidden = !container;
   if (container) {
     PP("Layout").value = s.layout || "vertical";
-    PP("Align").value = s.align || "left";
+    PP("Align").value = normalizeAlign(s.align);
+    PP("Justify").value = normalizeJustify(s.justify);
     PP("Gap").value = s.gap != null ? s.gap : 12;
     PP("Cols").value = s.cols || 2;
     PP("Wrap").checked = !!s.wrap;
@@ -3056,9 +3403,20 @@ function applyPropPanel() {
   s.minH = n0("MinH"); s.maxH = n0("MaxH");
   s.colSpan = Math.max(1, Math.round(Number(PP("ColSpan").value) || 1));
   s.rowSpan = Math.max(1, Math.round(Number(PP("RowSpan").value) || 1));
+  s.hideBelow = n0("HideBelow"); s.showBelow = n0("ShowBelow");
   s.alignH = PP("AlignH").value;
   s.alignV = PP("AlignV").value;
+  s.textOverflow = PP("TextOverflow").value;
+  if (s.type === "widget" && s.widget === "section") s.showCaption = PP("ShowCaption").checked;
   s.textColor = PP("TextColor").value;
+  const interactionTrigger = s.type === "widget" && ["button", "toolbutton", "menuitem"].includes(s.widget);
+  const interactiveScroll = (isContainer(s) && PP("Overflow").value === "scroll") || s.widget === "scrollbar";
+  const interactionTargetContainer = s.type === "widget" && ["section", "composite"].includes(s.widget) && !interactiveScroll;
+  if (interactionTrigger || interactiveScroll || interactionTargetContainer) {
+    s.interactionEnabled = PP("InteractionEnabled").checked;
+    s.toggleTarget = interactionTrigger ? PP("ToggleTarget").value.trim() : "";
+    s.interactionControl = interactionTargetContainer ? PP("ToggleTarget").value.trim() : "";
+  }
   if (s.type === "widget" && ["button", "toolbutton", "menuitem", "textbox"].includes(s.widget)) {
     s.icon = PP("Icon").value || null;
     s.iconSize = Math.max(8, Number(PP("IconSize").value) || 18);
@@ -3068,7 +3426,8 @@ function applyPropPanel() {
     if (s.icon) getIconImage(s.icon);
   }
   if (isContainer(s)) {
-    s.layout = PP("Layout").value; s.align = PP("Align").value; s.gap = n0("Gap");
+    s.layout = PP("Layout").value; s.align = normalizeAlign(PP("Align").value);
+    s.justify = normalizeJustify(PP("Justify").value); s.gap = n0("Gap");
     s.cols = Math.max(1, Math.round(Number(PP("Cols").value) || 1)); s.wrap = PP("Wrap").checked;
     s.overflow = PP("Overflow").value;
     s.scrollX = n0("ScrollX"); s.scrollY = n0("ScrollY");
@@ -3129,6 +3488,7 @@ const sizingData = (s) => ({
   heightPercent: s.heightPercent != null ? s.heightPercent : 100,
   minW: s.minW || 0, maxW: s.maxW || 0, minH: s.minH || 0, maxH: s.maxH || 0,
   colSpan: s.colSpan || 1, rowSpan: s.rowSpan || 1,
+  hideBelow: s.hideBelow || 0, showBelow: s.showBelow || 0,
 });
 
 // Serialize a single shape into the export format with computed metrics.
@@ -3157,7 +3517,7 @@ function serializeShape(s) {
       opacity: s.opacity != null ? s.opacity : 100, margin: s.margin || 0, padding: s.padding || 0,
       fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth,
       text: s.text || null, fontSize: s.fontSize || 14, textColor: s.textColor,
-      alignH: s.alignH || null, alignV: s.alignV || null,
+      alignH: s.alignH || null, alignV: s.alignV || null, textOverflow: s.textOverflow || "wrap",
     };
     if (s.variantOf) out.variantOf = s.variantOf;
     if (s.variantLabel) out.variantLabel = s.variantLabel;
@@ -3171,7 +3531,9 @@ function serializeShape(s) {
     if (s.buttonSide) out.buttonSide = s.buttonSide;
     if (s.barFill) out.barFill = s.barFill;
     if (s.layout) out.layout = s.layout;
-    if (s.align) out.align = s.align;
+    if (isContainer(s)) out.align = normalizeAlign(s.align);
+    if (isContainer(s)) out.justify = normalizeJustify(s.justify);
+    if (s.widget === "section") out.showCaption = sectionCaptionVisible(s);
     if (s.gap != null) out.gap = s.gap;
     if (s.cols != null) out.cols = s.cols;
     if (s.wrap != null) out.wrap = !!s.wrap;
@@ -3179,6 +3541,9 @@ function serializeShape(s) {
     if (s.scrollX != null) out.scrollX = s.scrollX;
     if (s.scrollY != null) out.scrollY = s.scrollY;
     if (s.bindScroll != null) out.bindScroll = !!s.bindScroll;
+    if (s.interactionEnabled != null) out.interactionEnabled = !!s.interactionEnabled;
+    if (s.toggleTarget) out.toggleTarget = s.toggleTarget;
+    if (s.interactionControl) out.interactionControl = s.interactionControl;
     if (s.strokeOpacity != null) out.strokeOpacity = s.strokeOpacity;
     if (s.icon) out.icon = s.icon;
     if (s.iconSize != null) out.iconSize = s.iconSize;
@@ -3205,7 +3570,7 @@ function serializeShape(s) {
       fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth,
       strokeOpacity: s.strokeOpacity != null ? s.strokeOpacity : 100,
       fontSize: s.fontSize || 14, alignH: s.alignH || "center",
-      alignV: s.alignV || "middle", textColor: s.textColor || "#ffffff",
+      alignV: s.alignV || "middle", textOverflow: s.textOverflow || "wrap", textColor: s.textColor || "#ffffff",
       center: { x: Math.round(s.x + s.w / 2), y: Math.round(s.y + s.h / 2) },
     };
   }
@@ -3297,6 +3662,7 @@ function loadDesign(doc) {
     minW: Number(s.minW) || 0, maxW: Number(s.maxW) || 0,
     minH: Number(s.minH) || 0, maxH: Number(s.maxH) || 0,
     colSpan: Math.max(1, Number(s.colSpan) || 1), rowSpan: Math.max(1, Number(s.rowSpan) || 1),
+    hideBelow: Math.max(0, Number(s.hideBelow) || 0), showBelow: Math.max(0, Number(s.showBelow) || 0),
   });
   state.shapes = doc.shapes.map(s => {
     if (s.type === "point") {
@@ -3318,17 +3684,20 @@ function loadDesign(doc) {
         margin: s.margin || 0, padding: s.padding || 0, fill: s.fill, stroke: s.stroke,
         strokeWidth: s.strokeWidth != null ? s.strokeWidth : 1,
         text: s.text || "", fontSize: s.fontSize || 14, textColor: s.textColor || "#111827",
-        alignH: s.alignH || null, alignV: s.alignV || null,
+        alignH: s.alignH || null, alignV: s.alignV || null, textOverflow: s.textOverflow || "wrap",
         checked: s.checked, on: s.on, value: s.value, count: s.count,
         active: s.active, lines: s.lines, controls: s.controls,
-        buttonSide: s.buttonSide, barFill: s.barFill, layout: s.layout, align: s.align,
+        buttonSide: s.buttonSide, barFill: s.barFill, layout: s.layout, align: normalizeAlign(s.align),
+        justify: normalizeJustify(s.justify),
         gap: s.gap, cols: s.cols, wrap: !!s.wrap, overflow: s.overflow || "visible",
         scrollX: Number(s.scrollX) || 0, scrollY: Number(s.scrollY) || 0,
-        bindScroll: !!s.bindScroll, strokeOpacity: s.strokeOpacity,
+        bindScroll: !!s.bindScroll, interactionEnabled: s.interactionEnabled != null ? !!s.interactionEnabled : undefined,
+        toggleTarget: s.toggleTarget || "", interactionControl: s.interactionControl || "", strokeOpacity: s.strokeOpacity,
         icon: s.icon || null, iconSize: Number(s.iconSize) || undefined,
         iconPosition: s.iconPosition || null, iconGap: Number(s.iconGap) || 0,
         frame: s.frame ? JSON.parse(JSON.stringify(s.frame)) : undefined,
-        resizeMode: s.resizeMode || "reflow" };
+        resizeMode: s.resizeMode || "reflow",
+        showCaption: s.widget === "section" ? (s.showCaption != null ? !!s.showCaption : !!String(s.text || "").trim()) : undefined };
     }
     if (s.type === "rect" || s.type === "ellipse") {
       return {
@@ -3342,7 +3711,7 @@ function loadDesign(doc) {
         strokeWidth: s.strokeWidth != null ? s.strokeWidth : 1,
         strokeOpacity: s.strokeOpacity, text: s.text || "",
         fontSize: s.fontSize || 14, alignH: s.alignH || "center",
-        alignV: s.alignV || "middle", textColor: s.textColor || "#ffffff",
+        alignV: s.alignV || "middle", textOverflow: s.textOverflow || "wrap", textColor: s.textColor || "#ffffff",
       };
     }
     return {
@@ -3392,6 +3761,11 @@ async function loadDesignFromUrl(path) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     loadDesign(await res.json());
+    if (new URLSearchParams(location.search).get("preview") === "html") {
+      const code = await buildHtmlCode();
+      document.open(); document.write(code); document.close();
+      return;
+    }
     fitToView();
     render();
   } catch (err) {
@@ -3483,20 +3857,27 @@ function elementXml(s, indent) {
   if (s.textColor) a.push(`text-color="${s.textColor}"`);
   if (s.alignH) a.push(`text-align="${xmlEsc(s.alignH)}"`);
   if (s.alignV) a.push(`text-align-v="${xmlEsc(s.alignV)}"`);
+  if (s.textOverflow) a.push(`text-overflow="${xmlEsc(s.textOverflow)}"`);
+  if (s.widget === "section") a.push(`show-caption="${sectionCaptionVisible(s)}"`);
   a.push(`size-x="${xmlEsc(s.sizeModeX || "fixed")}" size-y="${xmlEsc(s.sizeModeY || "fixed")}"`);
   if (s.sizeModeX === "percent") a.push(`width-percent="${s.widthPercent != null ? s.widthPercent : 100}"`);
   if (s.sizeModeY === "percent") a.push(`height-percent="${s.heightPercent != null ? s.heightPercent : 100}"`);
   if (s.grow) a.push(`grow="${s.grow}"`);
   if (s.minW) a.push(`min-w="${s.minW}"`); if (s.maxW) a.push(`max-w="${s.maxW}"`);
   if (s.minH) a.push(`min-h="${s.minH}"`); if (s.maxH) a.push(`max-h="${s.maxH}"`);
+  if (s.hideBelow) a.push(`hide-below="${s.hideBelow}"`); if (s.showBelow) a.push(`show-below="${s.showBelow}"`);
   if (s.margin) { const m = side4(s.margin); a.push(`margin="${m.t},${m.r},${m.b},${m.l}"`); }
   if (s.padding) { const p = side4(s.padding); a.push(`padding="${p.t},${p.r},${p.b},${p.l}"`); }
   if (s.layout) a.push(`layout="${xmlEsc(s.layout)}"`);
-  if (s.align) a.push(`align="${xmlEsc(s.align)}"`);
+  if (isContainer(s)) a.push(`align="${xmlEsc(normalizeAlign(s.align))}"`);
+  if (isContainer(s)) a.push(`justify="${xmlEsc(normalizeJustify(s.justify))}"`);
   if (s.gap != null) a.push(`gap="${s.gap}"`);
   if (s.wrap) a.push(`wrap="true"`);
   if (s.cols) a.push(`columns="${s.cols}"`);
   if (s.overflow) a.push(`overflow="${xmlEsc(s.overflow)}"`);
+  if (s.interactionEnabled != null) a.push(`interaction-enabled="${!!s.interactionEnabled}"`);
+  if (s.toggleTarget) a.push(`toggle-target="${xmlEsc(s.toggleTarget)}"`);
+  if (s.interactionControl) a.push(`interaction-control="${xmlEsc(s.interactionControl)}"`);
   if (s.checked != null) a.push(`checked="${!!s.checked}"`);
   if (s.on != null) a.push(`on="${!!s.on}"`);
   if (s.value != null) a.push(`value="${s.value}"`);
@@ -3543,15 +3924,16 @@ async function saveXml() {
 const htmlEsc = (v) => xmlEsc(v).replace(/'/g, "&#39;");
 const cssPx = (v) => `${Math.max(0, Number(v) || 0)}px`;
 const cssSides = (v) => { const s = side4(v); return `${cssPx(s.t)} ${cssPx(s.r)} ${cssPx(s.b)} ${cssPx(s.l)}`; };
-const cssAlign = (v) => v === "center" ? "center" : v === "right" ? "flex-end" : "flex-start";
+const cssAlign = (v) => normalizeAlign(v) === "center" ? "center" : normalizeAlign(v) === "end" ? "flex-end"
+  : normalizeAlign(v) === "stretch" ? "stretch" : "flex-start";
+const cssJustify = (v) => ({ start: "flex-start", center: "center", end: "flex-end",
+  "space-between": "space-between", "space-around": "space-around", "space-evenly": "space-evenly" })[normalizeJustify(v)];
 const cssTextAlign = (v) => ["left", "right", "center"].includes(v) ? v : "left";
 const cssId = (s) => htmlEsc(s.id || s.name || s.widget || s.type);
 
 function htmlContentBox(s) {
   const P = side4(s.padding, 12);
-  const hasTitlebar = s.widget === "window" && childrenOf(s).some(k => k.widget === "titlebar");
-  const head = s.widget === "window" && !hasTitlebar ? Math.min(44, s.h * 0.18)
-    : s.widget === "section" ? 22 : 0;
+  const head = containerHeadOffset(s);
   return { x: s.x + P.l, y: s.y + P.t + head, P, head };
 }
 
@@ -3604,6 +3986,9 @@ function htmlNodeStyle(s, parent) {
     `margin:${cssSides(s.margin)}`, `opacity:${(s.opacity != null ? s.opacity : 100) / 100}`,
     `color:${s.textColor || "#111827"}`, `font-size:${cssPx(s.fontSize || 14)}`,
     `text-align:${cssTextAlign(s.alignH)}`];
+  if (s.textOverflow === "ellipsis") out.push("white-space:nowrap", "overflow:hidden", "text-overflow:ellipsis");
+  else if (s.textOverflow === "clip") out.push("white-space:nowrap", "overflow:hidden", "text-overflow:clip");
+  else out.push("white-space:normal", "overflow-wrap:anywhere");
   if (s.maxW) out.push(`max-width:${cssPx(s.maxW)}`);
   if (s.maxH) out.push(`max-height:${cssPx(s.maxH)}`);
   if (indicator) out.push("background:transparent", `--sr-accent:${look.fill || "#4a9eff"}`, `accent-color:${look.fill || "#4a9eff"}`);
@@ -3618,10 +4003,10 @@ function htmlContainerStyle(s) {
   const layout = s.layout || "vertical", P = side4(s.padding, 12);
   const out = ["position:relative", "flex:1 1 auto", "min-width:0", "min-height:0", "width:100%", "height:100%",
     `padding:${cssSides(P)}`, `gap:${cssPx(s.gap != null ? s.gap : 12)}`,
-    `overflow:${s.overflow === "scroll" ? "auto" : s.overflow === "clip" ? "hidden" : "visible"}`];
+    `overflow:${s.overflow === "scroll" ? (s.interactionEnabled === false ? "hidden" : "auto") : s.overflow === "clip" ? "hidden" : "visible"}`];
   if (layout === "table") out.push("display:grid", `grid-template-columns:repeat(${Math.max(1, s.cols || 1)},minmax(0,1fr))`);
   else out.push("display:flex", `flex-direction:${layout === "horizontal" ? "row" : "column"}`,
-    `align-items:${cssAlign(s.align)}`, `flex-wrap:${s.wrap ? "wrap" : "nowrap"}`);
+    `align-items:${cssAlign(s.align)}`, `justify-content:${cssJustify(s.justify)}`, `flex-wrap:${s.wrap ? "wrap" : "nowrap"}`);
   return out.join(";");
 }
 
@@ -3631,9 +4016,23 @@ function htmlIcon(s, assets) {
   return `<img class="sr-icon" src="${htmlEsc(src)}" alt="" style="width:${cssPx(s.iconSize || 18)};height:${cssPx(s.iconSize || 18)}">`;
 }
 
+function htmlInteractionAttrs(s) {
+  const out = [];
+  let enabled = s.interactionEnabled === true, toggleTarget = enabled ? s.toggleTarget : "";
+  const root = rootWindowOf(s), scope = root ? [root, ...descendantsOf(root)] : state.shapes;
+  const refs = new Set([String(s.id || "").toLowerCase(), String(s.name || "").toLowerCase()]);
+  const controlled = scope.find(candidate => candidate.interactionEnabled && candidate.interactionControl &&
+    refs.has(String(candidate.interactionControl).toLowerCase()));
+  if (controlled) { enabled = true; toggleTarget = controlled.name || controlled.id; }
+  if (s.interactionEnabled != null || controlled) out.push(`data-interactive="${enabled}"`);
+  if (toggleTarget) out.push(`data-toggle-target="${htmlEsc(toggleTarget)}"`);
+  if (s.widget === "scrollbar" && s.bindScroll) out.push('data-bind-scroll="parent"');
+  return out.length ? " " + out.join(" ") : "";
+}
+
 function htmlLeaf(s, style, assets) {
   const text = htmlEsc(s.text || ""), icon = htmlIcon(s, assets);
-  const attrs = `id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget || s.type)}" data-name="${htmlEsc(s.name || "")}" style="${style}"`;
+  const attrs = `id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget || s.type)}" data-name="${htmlEsc(s.name || "")}"${htmlInteractionAttrs(s)} style="${style}"`;
   switch (s.widget) {
     case "button": case "toolbutton": case "menuitem": return `<button ${attrs}>${icon}${text}</button>`;
     case "textbox": case "searchfield": return `<input ${attrs} type="text" value="${text}">`;
@@ -3648,7 +4047,7 @@ function htmlLeaf(s, style, assets) {
       return src ? `<img ${attrs} src="${htmlEsc(src)}" alt="${text}">` : `<div ${attrs}></div>`;
     }
     case "tabs": return `<nav ${attrs}>${[...Array(Math.max(1, s.count || 1))].map((_, i) => `<button${i === (s.active || 0) ? ' class="active"' : ""}>${text || "Tab"} ${i + 1}</button>`).join("")}</nav>`;
-    case "wincontrols": return `<div ${attrs} aria-label="Window controls"><i></i><i></i><i></i></div>`;
+    case "wincontrols": return `<div ${attrs} aria-label="Window controls"><i class="min">−</i><i class="max">□</i><i class="close">×</i></div>`;
     case "separator": case "spacer": return `<div ${attrs}></div>`;
     default: return `<div ${attrs}>${icon}${text}</div>`;
   }
@@ -3658,15 +4057,31 @@ function htmlElement(s, parent, assets, indent = 2) {
   const pad = "  ".repeat(indent), style = htmlNodeStyle(s, parent);
   if (!isContainer(s)) return pad + htmlLeaf(s, style, assets);
   const kids = childrenOf(s).sort((a, b) => slotOf(a) - slotOf(b));
-  if (!kids.length) {
+  const interaction = htmlInteractionAttrs(s);
+  if (!kids.length && s.widget !== "section") {
     const justify = s.alignH === "right" ? "flex-end" : s.alignH === "center" ? "center" : "flex-start";
     const align = s.alignV === "bottom" ? "flex-end" : s.alignV === "middle" ? "center" : "flex-start";
-    return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}" style="${style};display:flex;justify-content:${justify};align-items:${align};padding:${cssSides(s.padding)}">${htmlEsc(s.text || "")}</div>`;
+    return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}"${interaction} style="${style};display:flex;justify-content:${justify};align-items:${align};padding:${cssSides(s.padding)}">${htmlEsc(s.text || "")}</div>`;
   }
-  const caption = s.widget === "section" && s.text.trim()
+  const caption = sectionCaptionVisible(s)
     ? `\n${pad}  <span class="sr-caption">${htmlEsc(s.text)}</span>` : "";
   const childHtml = kids.map(k => htmlElement(k, s, assets, indent + 2)).join("\n");
-  return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}" style="${style};display:flex;flex-direction:column">${caption}\n${pad}  <div class="sr-content" style="${htmlContainerStyle(s)}">\n${childHtml}\n${pad}  </div>\n${pad}</div>`;
+  return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}"${interaction} style="${style};display:flex;flex-direction:column">${caption}\n${pad}  <div class="sr-content" style="${htmlContainerStyle(s)}">\n${childHtml}\n${pad}  </div>\n${pad}</div>`;
+}
+
+function htmlResponsiveCss() {
+  const rules = [];
+  for (const s of state.shapes.filter(isElement)) {
+    const id = String(s.id || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+    if (!id) continue;
+    if (s.showBelow > 0) {
+      rules.push(`#${id}{display:none!important}`,
+        `@container (max-width:${Math.max(0, Number(s.showBelow) - 0.01)}px){#${id}{display:revert!important}}`);
+    }
+    if (s.hideBelow > 0)
+      rules.push(`@container (max-width:${Math.max(0, Number(s.hideBelow) - 0.01)}px){#${id}{display:none!important}}`);
+  }
+  return rules.join("\n    ");
 }
 
 async function embeddedAssets() {
@@ -3688,6 +4103,7 @@ async function buildHtmlCode() {
   const assets = await embeddedAssets();
   const roots = state.shapes.filter(s => isElement(s) && !s.parent).sort((a, b) => a.y - b.y || a.x - b.x);
   const body = roots.map(s => htmlElement(s, null, assets)).join("\n");
+  const responsive = htmlResponsiveCss();
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -3696,16 +4112,39 @@ async function buildHtmlCode() {
   <title>${htmlEsc(roots[0]?.text || roots[0]?.name || "PixelRuller design")}</title>
   <style>
     *{box-sizing:border-box} html,body{margin:0;min-height:100%;font-family:system-ui,sans-serif;background:#171b22}
-    body{display:flex;flex-direction:column;align-items:center;gap:32px;padding:16px}.sr-node{font-family:inherit}.sr-window{position:relative;overflow:hidden}
+    body{display:flex;flex-direction:column;align-items:center;gap:32px;padding:16px}.sr-node{font-family:inherit}.sr-window{position:relative;overflow:hidden;container-type:inline-size}
     .sr-caption{display:block;flex:0 0 22px;padding:5px 8px 0}.sr-icon{object-fit:contain;vertical-align:middle;margin-right:6px}
-    button,input,select,progress{font:inherit;color:inherit}button{cursor:pointer}.sr-checkbox,.sr-radio{display:flex;align-items:center;gap:7px}.sr-checkbox>input,.sr-radio>input{accent-color:var(--sr-accent)}
+    button,input,select,progress{font:inherit;color:inherit}button{cursor:pointer}.sr-checkbox,.sr-radio{display:flex;align-items:center;gap:7px}.sr-checkbox>input,.sr-radio>input{appearance:none;width:17px;height:17px;flex:0 0 17px;margin:0;border:1px solid #6b7280;border-radius:3px;background:#fff;display:grid;place-content:center}.sr-radio>input{border-radius:50%}.sr-checkbox>input:checked,.sr-radio>input:checked{background:var(--sr-accent)}.sr-checkbox>input:checked:after{content:"";width:8px;height:4px;border-left:2px solid #111827;border-bottom:2px solid #111827;transform:translateY(-1px) rotate(-45deg)}.sr-radio>input:checked:after{content:"";width:7px;height:7px;border-radius:50%;background:#111827}.sr-toggle>input{appearance:none;width:44px;height:24px;margin:0;border:1px solid #9aa1ac;border-radius:999px;background:#c9ced6;padding:2px;display:flex;justify-content:flex-start}.sr-toggle>input:after{content:"";width:18px;height:18px;border-radius:50%;background:#e5e7eb;transition:transform .15s}.sr-toggle>input:checked{background:var(--sr-accent)}.sr-toggle>input:checked:after{background:#e5e7eb;transform:translateX(18px)}
     progress{appearance:none;overflow:hidden;background:#c9ced6}progress::-webkit-progress-bar{background:#c9ced6}progress::-webkit-progress-value{background:var(--sr-accent)}progress::-moz-progress-bar{background:var(--sr-accent)}
-    .sr-wincontrols{display:flex;align-items:center;justify-content:flex-end;gap:10px}.sr-wincontrols i{width:18px;height:18px;border-radius:50%;background:#ff5f57}.sr-wincontrols i:nth-child(1){background:#ffbd2e}.sr-wincontrols i:nth-child(2){background:#28c840}
+    .sr-wincontrols{display:flex;align-items:center;justify-content:flex-end;gap:8px}.sr-wincontrols i{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:rgba(127,127,127,.14);font-style:normal;font-size:15px;line-height:1}.sr-wincontrols i.close{font-size:18px}
     .sr-tabs{display:flex}.sr-tabs>*{flex:1}.sr-tabs .active{font-weight:700}.sr-separator{border-left:1px solid currentColor!important}.sr-spacer{border:0!important}
+    ${responsive}
   </style>
 </head>
 <body>
 ${body}
+<script>
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest('[data-interactive="true"][data-toggle-target]');
+    if (!trigger) return;
+    const root = trigger.closest('.sr-window') || document;
+    const ref = trigger.dataset.toggleTarget;
+    const target = [...root.querySelectorAll('[data-name]')].find(el => el.dataset.name === ref) || root.querySelector('#' + CSS.escape(ref));
+    if (!target) return;
+    const hidden = getComputedStyle(target).display === "none" || target.dataset.runtimeVisible === "false";
+    target.dataset.runtimeVisible = hidden ? "true" : "false";
+    target.style.setProperty("display", hidden ? "flex" : "none", "important");
+  });
+  document.addEventListener("input", (event) => {
+    const bar = event.target.closest('[data-interactive="true"][data-bind-scroll="parent"]');
+    if (!bar) return;
+    const host = bar.parentElement;
+    if (!host) return;
+    const ratio = Number(bar.value || 0) / 100;
+    if (bar.offsetHeight > bar.offsetWidth) host.scrollTop = (host.scrollHeight - host.clientHeight) * ratio;
+    else host.scrollLeft = (host.scrollWidth - host.clientWidth) * ratio;
+  });
+</script>
 </body>
 </html>`;
 }
@@ -3722,6 +4161,58 @@ async function saveHtmlCode() {
     toast("Runnable HTML saved → " + data.path);
   } catch (err) { toast("Code export failed: " + err.message, true); }
 }
+
+// Deterministic engine contract used by browser verification and future CI.
+// It exercises layout and every serialization surface without changing the
+// user's open design.
+function runLayoutSelfTests() {
+  const savedShapes = state.shapes, savedMode = state.docMode;
+  const results = [];
+  const check = (name, condition, detail = "") => results.push({ name, ok: !!condition, detail });
+  try {
+    state.docMode = "canvas";
+    const section = { id: "test_section", type: "widget", widget: "section", toolkit: "gtk4",
+      name: "Actions", text: "Actions", showCaption: false, x: 0, y: 0, w: 300, h: 100,
+      padding: 0, layout: "horizontal", align: "center", justify: "end", gap: 10 };
+    const one = { id: "test_one", parent: section.id, slot: 0, type: "widget", widget: "button", toolkit: "gtk4",
+      name: "One", text: "One", x: 0, y: 0, w: 50, h: 20, sizeModeX: "fixed", sizeModeY: "fixed" };
+    const two = { ...one, id: "test_two", slot: 1, name: "Two", text: "Two" };
+    state.shapes = [section, one, two];
+    arrangeInto(section);
+    check("justify-end", one.x === 190 && two.x === 250, `${one.x},${two.x}`);
+    check("cross-axis-center", one.y === 40 && two.y === 40, `${one.y},${two.y}`);
+    check("hidden-caption-no-offset", containerViewport(section).y === 0, String(containerViewport(section).y));
+    const json = serializeShape(section), xml = elementXml(section, 0);
+    check("json-roundtrip-fields", json.showCaption === false && json.justify === "end" && json.align === "center");
+    check("xml-roundtrip-fields", xml.includes('show-caption="false"') && xml.includes('justify="end"'));
+    check("html-layout-fields", htmlContainerStyle(section).includes("justify-content:flex-end"));
+    const before = JSON.stringify(section);
+    const invalid = validatedSet(["justify"], "sideways");
+    check("invalid-set-rejected", !!invalid.error && JSON.stringify(section) === before, invalid.error || "mutated");
+    const label = { type: "widget", widget: "label", toolkit: "gtk4", text: "A long description that wraps over several lines",
+      w: 90, h: 20, fontSize: 14, padding: 0, textOverflow: "wrap", sizeModeY: "hug" };
+    check("wrapped-hug-height", hugDimensions(label).h > 20, String(hugDimensions(label).h));
+    const win = { id: "test_window", type: "widget", widget: "window", w: 300, h: 200 };
+    const target = { id: "test_target", parent: win.id, type: "widget", widget: "section", name: "Sidebar", w: 80, h: 100,
+      interactionEnabled: true, interactionControl: "Trigger" };
+    const probe = { id: "test_probe", parent: win.id, type: "widget", widget: "toolbutton", name: "Trigger",
+      text: "<", x: 0, y: 0, w: 30, h: 30, hideBelow: 400 };
+    state.shapes.push(win, target, probe);
+    check("responsive-hide", responsiveVisible(probe) === false);
+    win.w = 500;
+    check("responsive-show", responsiveVisible(probe) === true);
+    check("responsive-html", htmlResponsiveCss().includes("max-width:399.99px"));
+    const interactionJson = serializeShape(target), interactionXml = elementXml(target, 0);
+    check("interaction-target", interactionTargets(probe)[0] === target);
+    check("interaction-json", interactionJson.interactionEnabled === true && interactionJson.interactionControl === "Trigger");
+    check("interaction-xml", interactionXml.includes('interaction-enabled="true"') && interactionXml.includes('interaction-control="Trigger"'));
+    check("interaction-html", htmlLeaf(probe, "", new Map()).includes('data-toggle-target="Sidebar"'));
+  } finally {
+    state.shapes = savedShapes; state.docMode = savedMode;
+  }
+  return { ok: results.every(r => r.ok), results };
+}
+window.runLayoutSelfTests = runLayoutSelfTests;
 
 async function exportJson() {
   if (!exportableShapes().length) { toast("Nothing to export yet — draw something first", true); return; }
@@ -3775,10 +4266,11 @@ PP("W").addEventListener("input", () => { PP("SizeX").value = "fixed"; });
 PP("H").addEventListener("input", () => { PP("SizeY").value = "fixed"; });
 ["Name", "Text", "X", "Y", "W", "H", "Fixed", "Z", "Parent", "Filled", "Fill", "Stroke", "StrokeW",
  "StrokeO", "Radius", "Opacity", "MarT", "MarR", "MarB", "MarL", "PadT", "PadR", "PadB", "PadL",
- "SizeX", "SizeY", "PercentW", "PercentH", "Grow", "MinW", "MaxW", "MinH", "MaxH", "ColSpan", "RowSpan",
- "Font", "AlignH", "AlignV", "TextColor", "Icon", "IconSize", "IconPosition", "IconGap",
- "Layout", "Align", "Gap", "Cols", "Wrap", "Overflow", "ScrollX", "ScrollY",
- "StateBool", "StateVal", "StateCount", "ScrollBind", "CornersLinked", "RadiusTL", "RadiusTR", "RadiusBR", "RadiusBL", "ResizeMode"].forEach(k =>
+ "SizeX", "SizeY", "PercentW", "PercentH", "Grow", "MinW", "MaxW", "MinH", "MaxH", "ColSpan", "RowSpan", "HideBelow", "ShowBelow",
+ "Font", "AlignH", "AlignV", "TextOverflow", "ShowCaption", "TextColor", "Icon", "IconSize", "IconPosition", "IconGap",
+ "Layout", "Align", "Justify", "Gap", "Cols", "Wrap", "Overflow", "ScrollX", "ScrollY",
+ "StateBool", "StateVal", "StateCount", "ScrollBind", "InteractionEnabled", "ToggleTarget",
+ "CornersLinked", "RadiusTL", "RadiusTR", "RadiusBR", "RadiusBL", "ResizeMode"].forEach(k =>
   PP(k).addEventListener("input", applyPropPanel));
 document.getElementById("ppFront").addEventListener("click", bringFront);
 document.getElementById("ppBack").addEventListener("click", sendBack);
@@ -4293,6 +4785,11 @@ canvas.addEventListener("mousedown", (e) => {
       }
       const p = screenToImage(sx, sy);
       const hit = hitTest(p);
+      if (state.mode === "select" && hit !== null && interactionTargets(state.shapes[hit]).length && !e.shiftKey) {
+        selectOnly(hit);
+        toggleInteractionTarget(state.shapes[hit]);
+        return;
+      }
       // Tabs are editable directly on the design surface: a plain click selects
       // the strip and makes the tab under the pointer active. Only Move may
       // create a following movement drag.
@@ -4398,10 +4895,26 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const r = canvas.getBoundingClientRect();
+  const p = screenToImage(e.clientX - r.left, e.clientY - r.top);
+  const scroller = state.shapes.filter(s => isContainer(s) && s.overflow === "scroll" && s.interactionEnabled && responsiveVisible(s) &&
+    p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h)
+    .sort((a, b) => a.w * a.h - b.w * b.h)[0];
+  if (scroller && (scroller.scrollMaxX > 0 || scroller.scrollMaxY > 0)) {
+    if (e.shiftKey && scroller.scrollMaxX > 0)
+      scroller.scrollX = Math.max(0, Math.min(scroller.scrollMaxX, (Number(scroller.scrollX) || 0) + e.deltaY / state.view.scale));
+    else scroller.scrollY = Math.max(0, Math.min(scroller.scrollMaxY, (Number(scroller.scrollY) || 0) + e.deltaY / state.view.scale));
+    relayout(); render();
+    return;
+  }
   zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
 
 window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "u") {
+    e.preventDefault();
+    setCommandFocus(!document.body.classList.contains("command-focus"));
+    return;
+  }
   if (e.target.tagName === "INPUT") return;
   // Typed distance: digits while drawing an area build a length; Enter applies it.
   if (state.building && /^[0-9.]$/.test(e.key) && !e.ctrlKey && !e.metaKey) {
@@ -4444,6 +4957,28 @@ window.addEventListener("keyup", (e) => { if (e.code === "Space") state.spaceDow
 
 window.addEventListener("resize", resizeCanvas);
 
+let remoteCommandTimer = null;
+async function pollRemoteCommands() {
+  clearTimeout(remoteCommandTimer);
+  try {
+    if (state.ready && state.docMode === "canvas") {
+      const response = await fetch("/api/commands/next", { cache: "no-store" });
+      if (response.status === 200) {
+        const item = await response.json();
+        const result = runCommand(item.command);
+        await fetch("/api/commands/result", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: item.id, ...result }),
+        });
+      }
+    }
+  } catch (_) {
+    // The editor may outlive a restarted local server; polling resumes quietly.
+  }
+  remoteCommandTimer = setTimeout(pollRemoteCommands, 150);
+}
+
 // ----- Boot -------------------------------------------------------------
 hintEl.innerHTML =
   "Point mode: click to read pixel coordinates. Area mode: click to chain measured lines.<br>" +
@@ -4468,3 +5003,8 @@ if (params.get("design")) {
   // Otherwise begin by choosing a start mode (screenshot / blank canvas / load).
   showStart();
 }
+if (params.has("selftest")) {
+  window.__layoutSelfTestResult = runLayoutSelfTests();
+  document.body.dataset.layoutTests = window.__layoutSelfTestResult.ok ? "pass" : "fail";
+}
+pollRemoteCommands();

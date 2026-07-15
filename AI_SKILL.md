@@ -13,16 +13,18 @@ Administrator permission is required only to install or remove the package.
 An AI does not need root access to use PixelRuller. It needs:
 
 - permission from its host to run `pixelruller` if it must start the app;
-- browser-control access to the local PixelRuller tab to operate the visual UI;
+- optional browser access for final visual inspection or for editor operations
+  that do not yet have command equivalents;
 - read/write access to the project design JSON if it will update that file.
 
 Screenshot capture additionally requires a graphical desktop session and any
 supported screenshot tool. PixelRuller auto-detects Spectacle, GNOME/MATE/XFCE
 Screenshot, Grim, Flameshot, Scrot, Maim, or Shutter, and accepts a custom
 `PIXELRULLER_SCREENSHOT_COMMAND` containing `{output}`. Canvas design, JSON
-loading, commands, and code export do not need screenshot permission. An AI
-without browser control can still read and implement exported JSON, but it cannot
-click or visually verify the live editor.
+loading, commands, and code export do not need screenshot permission. Prefer the
+design command bar and canonical JSON over pointer-driven editing. An AI without
+browser control can still read, edit, and implement exported JSON; only live
+visual verification requires access to the rendered editor or preview.
 
 Useful installed commands:
 
@@ -61,6 +63,9 @@ inside PixelRuller is a design command bar; its commands are not shell commands.
    the target application's existing behavior.
 7. Reload and visually inspect a design after material changes, including at
    more than one window size.
+8. Apply the selected toolkit's metrics before approving a design. Never remove
+   internal control padding to make text fit; shorten the label, widen the
+   control, or move secondary wording into a nearby title/subtitle.
 
 ## Widget catalogue
 
@@ -132,7 +137,11 @@ exact name, or an unambiguous name prefix.
 
 ```text
 help
-list
+tree [root] [all]
+list [root] [all]
+inspect <element>
+selection
+ui <hide|show|toggle>
 add <widget> [into <container>]
 add rect [x y w h] [into <container>]
 add ellipse [x y w h] [into <container>]
@@ -153,6 +162,21 @@ exit
 ungroup <composite|section>
 theme <GTK light|GTK dark|KDE light|KDE dark>
 ```
+
+When the local editor is open on port 8765, submit the same commands without
+mouse or keyboard simulation:
+
+```text
+pixelruller-command 'select "Apply changes"'
+pixelruller-command 'tree "AppLocker Settings Compact" all'
+pixelruller-command 'ui hide'
+```
+
+`tree` reports hierarchy, ids, slots, geometry, fill/stroke, visibility, managed
+versus fixed layout, and marks the current selection with `▶`. `inspect` returns
+the complete stored element plus current visibility and children. `ui hide`
+temporarily suppresses editor chrome and canvas number labels; `ui show` or
+Ctrl+Shift+U restores the previous view.
 
 Examples:
 
@@ -219,6 +243,24 @@ per-widget pixel sizes and these practical role palettes are PixelRuller-derived
 defaults for reproducible design work; they are not claims that every value is
 an immutable official toolkit token.
 
+Treat these as build constraints:
+
+- Use GTK multiples of 6 and KDE/Kirigami semantic spacing units consistently.
+- Give GTK text buttons 12 px horizontal and 6 px vertical internal padding;
+  use the toolkit metric even when the button is set to hug content.
+- Give KDE text buttons the derived 8 px horizontal and 4 px vertical padding.
+- Keep adjacent action buttons the same height and, where practical, the same
+  width. GNOME recommends equal widths for neighboring buttons.
+- Use short imperative labels such as `Apply`, `Edit Faces`, or `Stop`. Put
+  explanation in a nearby title/subtitle rather than squeezing it into a button.
+- Use a switch for immediate settings and a checkbox when changes wait for an
+  Apply/OK action. Do not use a switch as a decorative status marker.
+- Use the theme's neutral/foreground handle color for switches. Do not hardcode
+  a black or white knob as a universal GTK/KDE rule; preserve theme and
+  high-contrast compatibility.
+- Use theme roles and toolkit widgets instead of custom hardcoded colors whenever
+  the final implementation supports them.
+
 Spacing baseline:
 
 | Role | GTK/GNOME | KDE/Kirigami |
@@ -242,8 +284,12 @@ accent hover/highlight, success, warning, error.
 Sources:
 
 - GNOME Human Interface Guidelines: https://developer.gnome.org/hig/
+- GNOME buttons: https://developer.gnome.org/hig/patterns/controls/buttons.html
+- Libadwaita styles and high contrast: https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/styles-and-appearance.html
 - GNOME layout archive: https://wiki.gnome.org/Design/HIG/Planning/Layout
 - KDE Human Interface Guidelines: https://develop.kde.org/hig/
+- KDE input controls: https://develop.kde.org/hig/getting_input/
+- KDE layout and navigation: https://develop.kde.org/hig/layout_and_nav/
 - KDE units and measurements: https://develop.kde.org/hig/layout/units.html
 - Kirigami Units reference: https://api.kde.org/kirigami-platform-units.html
 
@@ -256,18 +302,21 @@ Before editing, read this guide, the project README/Map, the canonical JSON, and
 the target application's existing code. Then:
 
 1. Open the canonical design through Load or `?design=filename.json`.
-2. Make semantic, named changes with widgets and nested containers.
-3. Create visible size/state variants when responsiveness matters.
-4. Export JSON and save it back to the canonical project path without removing
+2. Inspect names/hierarchy with `tree`; use commands for selection, property
+   edits, movement, re-parenting, grouping, and arranging whenever possible.
+   Keep pointer-driven editing for cases the command surface cannot express.
+3. Make semantic, named changes with widgets and nested containers.
+4. Create visible size/state variants when responsiveness matters.
+5. Export JSON and save it back to the canonical project path without removing
    unrelated user changes.
-5. Reload the JSON and inspect the editor visually.
-6. Translate the approved hierarchy and properties into real application code.
-7. Test the implementation at every represented window size/state.
-8. Give the user a direct clickable/downloadable chat link to every approved
+6. Reload the JSON and inspect the editor visually.
+7. Translate the approved hierarchy and properties into real application code.
+8. Test the implementation at every represented window size/state.
+9. Give the user a direct clickable/downloadable chat link to every approved
    design artifact they need (at minimum the canonical JSON, plus generated code
    or package when applicable). Never report only a filesystem location after a
    co-design session.
-9. Report the design file, code changes, visual checks, and any unavoidable
+10. Report the design file, code changes, visual checks, and any unavoidable
    implementation difference.
 
 Completion means the approved visual state survives JSON reload, responsive

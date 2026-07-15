@@ -4,7 +4,7 @@
 
 AI collaborators should read [`AI_SKILL.md`](AI_SKILL.md) before creating, editing, or implementing a PixelRuller UI design.
 
-Current release: **v0.0.2**
+Current release: **v0.0.3**
 
 A pixel-measuring tool for counting screen distances, positions, and areas.
 It grabs a full screenshot, overlays a ruler grid, and lets you drop points or
@@ -38,6 +38,14 @@ based on the real [PDFExtractor project](https://github.com/kalotrapezis/PDFextr
 Its window has a safe 1000×700 minimum, so the desktop UI stops shrinking before
 the document/settings columns and action bar become unusable.
 
+[`AppLockerUI.json`](web/AppLockerUI.json) is the breakpoint-state proof. It
+contains regular and compact Window variants: below 600 px the settings
+navigation is hidden, the content expands, and a Back button appears in the
+title bar. The same `hideBelow` / `showBelow` data drives the canvas, JSON/XML,
+hit-testing, and container-query rules in generated HTML. Its navigation also
+demonstrates opt-in UI interaction: the sidebar names **Back** as its toggle
+control, while the content area enables wheel scrolling.
+
 ## Run
 
 ```bash
@@ -53,10 +61,10 @@ Check the installed or source version with:
 
 ## Install the Debian package
 
-Download `pixelruller_0.0.2_all.deb` from the GitHub release and install it with:
+Download `pixelruller_0.0.3_all.deb` from the GitHub release and install it with:
 
 ```bash
-sudo apt install ./pixelruller_0.0.2_all.deb
+sudo apt install ./pixelruller_0.0.3_all.deb
 ```
 
 Then launch **PixelRuller** from the application menu or run `pixelruller` in a
@@ -78,9 +86,18 @@ PIXELRULLER_SCREENSHOT_COMMAND='my-screenshot-tool --output {output}' pixelrulle
 ```
 
 The package installs `/usr/bin/pixelruller`, so the command is system-wide after
-installation. Root is not required to run it. An AI needs browser-control access
-to operate the live editor, but can always print the complete platform-neutral
-usage guide with `pixelruller --print-ai-skill`.
+installation. Root is not required to run it. With a canvas design open, an AI
+can use the installed `pixelruller-command` client to operate the live editor
+through its localhost command queue; browser control is only needed to open/load
+and visually verify the design. Print the complete platform-neutral guide with
+`pixelruller --print-ai-skill`.
+
+```bash
+pixelruller-command 'select "Apply changes"'
+pixelruller-command 'tree "AppLocker Settings Compact" all'
+pixelruller-command 'ui hide'   # canvas-only command focus
+pixelruller-command 'ui show'
+```
 
 On launch you pick a **start mode**:
 
@@ -223,6 +240,14 @@ pointing tools.
   parent/slot tree becomes nested DOM; layout/sizing/style/state become CSS and
   native controls; referenced assets are embedded. Only explicit **Fixed** mode
   generates absolute positioning. JSON remains the canonical editable format.
+- **Responsive visibility** — Properties exposes **Hide below W** and
+  **Show below W**. Values are measured against the owning Window width, so a
+  compact state can replace desktop-only navigation with mobile-style controls.
+- **Interaction** — enable interaction on a Button/Tool button/Menu item and
+  name the section it toggles, or enable it on a Section and name the control
+  that hides/shows it. Scroll containers can independently enable or disable
+  wheel/range scrolling. These fields round-trip through JSON/XML and work in
+  the canvas and generated HTML.
 - The current **zoom %** shows at the bottom-left of the canvas.
 - A **Window** is a root parent. The final root cannot be deleted, and a new
   canvas starts with one; additional application windows and responsive/state
