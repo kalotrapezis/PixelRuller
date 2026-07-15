@@ -39,6 +39,15 @@ body.mode-canvas #stage { bottom: 44px; right: 210px; }
 body.mode-canvas.lib-collapsed .bottombar { right: 34px; }
 body.mode-canvas.lib-collapsed #stage { right: 34px; }
 
+/* Command focus: keep only the live design surface visible. The same command
+   engine remains available through localhost; Ctrl+Shift+U restores the UI. */
+body.command-focus #toolbar,
+body.command-focus .sidebar,
+body.command-focus .library,
+body.command-focus .bottombar { display: none !important; }
+body.command-focus #stage { inset: 0 !important; }
+body.command-focus .toast { bottom: 14px; }
+
 /* Right Library panel (creation mode) */
 .library {
   position: absolute;
@@ -640,6 +649,29 @@ body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
 
 @media (max-width: 620px) {
   .window-modes { flex-direction: column; align-items: stretch; }
+}
+
+/* Preserve a useful canvas column while both editing panels remain open. */
+@media (max-width: 1100px) {
+  body.mode-canvas .sidebar { width: 240px; }
+  body.mode-canvas #stage, body.mode-canvas .bottombar { left: 240px; }
+  body.mode-canvas .library { width: 180px; }
+  body.mode-canvas #stage, body.mode-canvas .bottombar { right: 180px; }
+  body.mode-canvas.sb-collapsed #stage, body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
+  body.mode-canvas.lib-collapsed #stage, body.mode-canvas.lib-collapsed .bottombar { right: 34px; }
+  .bottombar { height: 68px; flex-wrap: wrap; align-content: center; }
+  body.mode-canvas #stage { bottom: 68px; }
+}
+
+@media (max-width: 760px) {
+  body.mode-canvas .sidebar { width: 210px; }
+  body.mode-canvas #stage, body.mode-canvas .bottombar { left: 210px; }
+  body.mode-canvas .library { width: 150px; }
+  body.mode-canvas #stage, body.mode-canvas .bottombar { right: 150px; }
+  body.mode-canvas.sb-collapsed #stage, body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
+  body.mode-canvas.lib-collapsed #stage, body.mode-canvas.lib-collapsed .bottombar { right: 34px; }
+  .pp-sec-body { padding-left: 8px; padding-right: 8px; }
+  .tree-meta { display: none; }
 }
 
 /* Start-mode chooser */

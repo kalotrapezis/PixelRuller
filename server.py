@@ -21,7 +21,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import urllib.parse
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -30,8 +33,78 @@ WEB_DIR = os.path.join(ROOT, "web")
 ASSETS_DIR = os.path.join(ROOT, "Assets")
 SAVE_SUBDIR = "PixelRuller"
 APP_NAME = "PixelRuller"
-APP_VERSION = "0.0.2"
+APP_VERSION = "0.0.3"
 AI_SKILL_PATH = os.path.join(ROOT, "AI_SKILL.md")
+
+
+class CommandBroker:
+    """Thread-safe localhost queue shared by the CLI and the open editor."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._items = {}
+        self._order = []
+
+    def enqueue(self, command):
+        command = str(command or "").strip()
+        if not command:
+            raise ValueError("command is required")
+        if len(command) > 4096:
+            raise ValueError("command is too long")
+        item_id = uuid.uuid4().hex
+        with self._lock:
+            self._items[item_id] = {
+                "id": item_id, "command": command, "status": "queued",
+                "created": time.time(),
+            }
+            self._order.append(item_id)
+            self._prune_locked()
+        return item_id
+
+    def take_next(self):
+        with self._lock:
+            for item_id in self._order:
+                item = self._items.get(item_id)
+                if item and item["status"] == "queued":
+                    item["status"] = "running"
+                    item["started"] = time.time()
+                    return {"id": item_id, "command": item["command"]}
+        return None
+
+    def complete(self, item_id, result):
+        with self._lock:
+            item = self._items.get(str(item_id))
+            if not item:
+                return False
+            item["status"] = "complete"
+            item["result"] = result
+            item["finished"] = time.time()
+            self._prune_locked()
+            return True
+
+    def result(self, item_id):
+        with self._lock:
+            item = self._items.get(str(item_id))
+            if not item:
+                return None
+            out = {"id": item["id"], "status": item["status"]}
+            if item["status"] == "complete":
+                out["result"] = item.get("result", {})
+            return out
+
+    def _prune_locked(self):
+        cutoff = time.time() - 300
+        stale = [item_id for item_id in self._order
+                 if self._items[item_id]["status"] == "complete"
+                 and self._items[item_id].get("finished", 0) < cutoff]
+        for item_id in stale:
+            self._items.pop(item_id, None)
+        if stale:
+            stale_set = set(stale)
+            self._order = [item_id for item_id in self._order if item_id not in stale_set]
+
+
+COMMAND_BROKER = CommandBroker()
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -180,7 +253,20 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(raw.decode("utf-8"))
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
+        if path == "/api/commands/next":
+            item = COMMAND_BROKER.take_next()
+            self._send(200, json.dumps(item)) if item else self._send(204, b"")
+            return
+        if path == "/api/commands/result":
+            item = COMMAND_BROKER.result((query.get("id") or [""])[0])
+            if not item:
+                self._send(404, json.dumps({"error": "unknown command id"}))
+            else:
+                self._send(200 if item["status"] == "complete" else 202, json.dumps(item))
+            return
         if path == "/assets":
             self.handle_assets_list()
             return
@@ -212,7 +298,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"icons": items}))
 
     def do_POST(self):
-        if self.path == "/capture":
+        if self.path == "/api/commands":
+            self.handle_command_enqueue()
+        elif self.path == "/api/commands/result":
+            self.handle_command_result()
+        elif self.path == "/capture":
             self.handle_capture()
         elif self.path == "/save":
             self.handle_save()
@@ -222,6 +312,26 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_save_text()
         else:
             self._send(404, json.dumps({"error": "unknown endpoint"}))
+
+    def handle_command_enqueue(self):
+        try:
+            item_id = COMMAND_BROKER.enqueue(self._read_json().get("command"))
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._send(400, json.dumps({"error": str(exc)}))
+            return
+        self._send(202, json.dumps({"id": item_id, "status": "queued"}))
+
+    def handle_command_result(self):
+        try:
+            payload = self._read_json()
+            item_id = payload.pop("id")
+        except (KeyError, json.JSONDecodeError) as exc:
+            self._send(400, json.dumps({"error": f"invalid result: {exc}"}))
+            return
+        if not COMMAND_BROKER.complete(item_id, payload):
+            self._send(404, json.dumps({"error": "unknown command id"}))
+            return
+        self._send(200, json.dumps({"id": item_id, "status": "complete"}))
 
     def handle_capture(self):
         try:

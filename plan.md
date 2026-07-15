@@ -16,6 +16,78 @@ Core principle: **the design is data.** A single canonical JSON document
 (`design.json`) is the source of truth. The GUI is one editor of it; Claude is
 another.
 
+## v0.0.3 release boundary (2026-07-15)
+
+Freeze v0.0.3 after layout/export fidelity, responsive visibility, opt-in UI
+interaction, composites, GTK/KDE default corrections, AppLocker regular/compact
+proofs, and the first working command-first co-design channel. Defer toolkit
+default reapplication, full command parity, `/design`/batch `/ops`, native
+GtkBuilder/Qt export, and new macOS/Windows libraries to later releases.
+
+## Active implementation — layout fidelity and canvas parity (2026-07-15)
+
+AppLockerUI exposed a group of editor behaviors that make a valid relative
+layout look broken. These are engine problems and must be corrected in the
+canonical JSON, canvas renderer, Properties panel, commands, and HTML/XML
+exports together. Do not patch individual designs with absolute positioning or
+growing Spacer widgets when the layout engine can express the intent directly.
+
+### Data-model decisions
+
+- A Section keeps meaningful `text`, but caption visibility is explicit through
+  `showCaption: true|false`. New Sections default to `true`. Legacy files infer
+  visibility from non-whitespace text, so the old single-space workaround loads
+  without a visible caption. Caption height is reserved only when visible.
+- Container alignment is split into two independent properties:
+  - `align`: cross-axis item alignment (`start`, `center`, `end`, `stretch`).
+  - `justify`: main-axis content distribution (`start`, `center`, `end`,
+    `space-between`, `space-around`, `space-evenly`).
+- Loader compatibility accepts legacy `left`/`right` and normalizes them to
+  `start`/`end`. Commands reject unknown values instead of saving inert data.
+- Canvas and generated HTML must use the same axis semantics. Horizontal
+  containers use `justify` across X and `align` across Y; vertical containers
+  use `justify` across Y and `align` across X.
+
+### Ordered implementation
+
+- [x] **1. Section captions:** add `showCaption` to Properties, JSON/XML and
+  HTML; remove the unconditional 22 px canvas reservation and the empty-string
+  fallback that forces `Section` to reappear.
+- [x] **2. Container positioning:** add the `justify` control and implement
+  start/center/end/space distribution in `arrangeInto()` and generated CSS.
+  Normalize legacy alignment values during load.
+- [x] **3. Command safety:** validate property names, nested side names, enums,
+  booleans and numeric ranges for `set`; return a useful error without mutating
+  the design.
+- [x] **4. Text fidelity:** add wrap/ellipsis/clip behavior to the canvas and
+  export, and use wrapped height when a text widget is set to `hug`.
+- [x] **5. Nested hug sizing:** measure container descendants, padding, caption
+  and gaps before the parent layout pass; repeat layout until nested natural
+  sizes stabilize.
+- [x] **6. Scrolling parity:** draw automatic scrollbar indicators for a canvas
+  container with `overflow: scroll` and non-zero overflow. Keep explicit bound
+  Scrollbar widgets available for product designs.
+- [x] **7. Toolkit chrome:** replace GTK/macOS traffic lights with GTK-style
+  minimize/maximize/close glyph buttons; preserve KDE-specific rendering.
+- [x] **8. Editor responsiveness:** keep the canvas usable when side panels and
+  Properties are visible at smaller browser widths.
+- [x] **9. AppLocker proof:** migrate `web/AppLockerUI.json` to the new fields,
+  use `justify: end` for its Action bar, change description labels to fill, and
+  add a compact window variant after the engine behavior is stable.
+- [x] **10. Verification:** add deterministic layout/serialization checks, run
+  the Python tests, inspect AppLocker and PDFExtractor on the canvas, and inspect
+  their generated HTML at regular and narrow browser sizes.
+- [x] **11. Opt-in UI interaction:** add an Interaction Properties section,
+  JSON/XML/command fields, canvas click/wheel behavior, and generated-HTML
+  runtime behavior for sidebar toggles and scroll containers. AppLocker uses a
+  target-centric `Settings navigation → Back` binding in both variants.
+
+### Completion rule
+
+Each field must round-trip through JSON and XML, produce equivalent generated
+HTML/CSS, be editable in Properties, and be accepted with validation through
+the command line. A canvas-only option or an export-only option is incomplete.
+
 ### Create-mode UI layout (target — from Teo's mockup 2026-07-07)
 
 The canvas ("create") mode is heading toward this layout. Screenshot ("showcase")
@@ -179,21 +251,48 @@ growing spacer, Search field and Hamburger at the end.
   min/max width+height, grow weight, proportional width/height percentages;
   container wrap/columns; table row/column
   spans. Properties, commands, style-copy and JSON all share the same fields.
-- [ ] **Responsive breakpoints (found with PDFExtractor, 2026-07-15):** allow a
-  container to switch layout and child sizing below a width (for example,
-  horizontal 65/35 cards → vertical stack). Percentage reflow is working, but
-  a narrow 760px window proves that ratios alone cannot express this change.
-- [ ] Add per-widget text overflow rules (wrap / ellipsis / clip). Narrow
+- [x] **Responsive visibility state (2026-07-15):** `hideBelow` / `showBelow`
+  switch elements at a Window-width breakpoint in the canvas, hit-testing,
+  JSON/XML and generated HTML container queries. AppLocker proves the pattern:
+  its compact state hides navigation, expands content, and shows a title-bar
+  Back button. Layout/sizing overrides at breakpoints remain a later extension.
+- [x] Add per-widget text overflow rules (wrap / ellipsis / clip). Narrow
   controls currently draw long dropdown, textbox and checkbox labels beyond
   their bounds even though their boxes resize correctly.
 - [x] Add overflow behavior: visible / clip / scroll, derived scroll extents,
   numeric X/Y offsets, nested viewport clipping, clipped hit-testing, and an
   optional fixed Scrollbar → parent binding (value 0–100 maps to scroll range).
+- [x] **Opt-in interaction (2026-07-15):** Properties can enable a sidebar and
+  name the Button/Tool button/Menu item that toggles it, or configure the target
+  on the control. Enabled scroll containers respond to the wheel; exported HTML
+  preserves both behaviors without turning general product logic into editor
+  runtime code.
 - [x] **Tool safety separation (2026-07-12):** Select changes selection/marquee
   and may resize via handles but never moves/reparents/reorders; Move is the only
   layout-moving tool; Camera pans without design mutations. Space-drag and
   middle-drag are Camera shortcuts consumed before object hit-testing.
-- [ ] **NEXT — Composite widget grouping:** select three or more widgets and
+- [ ] **NEXT — Command-first co-design parity:** make every normal build/edit
+  operation available through the same command engine so an AI can work without
+  pointer-driven canvas manipulation while the user keeps a clear view of the
+  application.
+  - [x] Add `tree [root] [all]` with hierarchy indentation plus id, widget type,
+    parent/slot, x/y/w/h, fill/stroke, responsive/runtime visibility, fixed state,
+    and an accent-colored selected marker in the command log.
+  - [x] Add `inspect <element>` for the complete editable property/state summary and
+    `selection` for the current multi-selection.
+  - Audit parity for add/select/multi-select/move/resize/re-parent/reorder/group/
+    make-widget/enter/exit/ungroup/delete/copy/rename/arrange/theme and toolkit
+    defaults; add any missing command rather than requiring canvas gestures.
+  - Add `defaults <element|subtree> [gtk4|kde]` to reapply the documented toolkit
+    sizes, padding, gaps, radii, and theme roles without changing semantic text.
+  - [x] Expose a local command transport that invokes the exact in-app command engine
+    without simulated mouse/keyboard input. Keep commands and results visible in
+    history so human and AI share the same audit trail.
+  - [x] Add `ui hide|show|toggle` command focus: hide toolbar/sidebars/bottom bar
+    and number overlays while preserving a full live canvas; Ctrl+Shift+U restores.
+  - [x] Keep browser control only for opening/loading and final visual QA; it must not
+    be the primary construction/editing interface.
+- [ ] **Composite widget grouping:** select three or more widgets and
   choose **Make Widget** to wrap them as one named composite (for example, all
   GNOME/KDE chrome pieces → `Window`). The composite behaves as one item for
   selection, move, resize, copy/paste, ordering and export, while retaining an
@@ -704,9 +803,10 @@ timer, save annotated PNG, export measurement JSON, right-click undo while drawi
   name prefix. ↑/↓ recalls history; a popup above the bar lists past commands
   (click to reuse; failures shown in red).
 - 5b: continuous `design.json` autosave to a repo path; app hot-reload on change.
-- 5c: HTTP command API (`/design`, `/ops`, and `/cmd` accepting command-line
-  strings) + live GUI refresh — this is how Claude edits alongside Teo, and how
-  a terminal session (`./run.sh --repl` or `curl`) edits the same live design.
+- 5c: HTTP command API. First live slice complete (2026-07-15): localhost queue,
+  open-editor polling through the shared `runCommand()`, result retrieval, and
+  `scripts/pixelruller_command.py`. Remaining: `/design`, batch `/ops`, and hot
+  reload/autosave integration.
 - 5d: operation log / history so both sides' edits are reviewable and replayable.
 
 ### Phase 6 — Design ↔ code binding

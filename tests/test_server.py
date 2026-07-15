@@ -49,5 +49,29 @@ class ScreenshotBackendTests(unittest.TestCase):
             server.capture_screenshot()
 
 
+class CommandBrokerTests(unittest.TestCase):
+    def test_command_round_trip(self):
+        broker = server.CommandBroker()
+        item_id = broker.enqueue('select "Apply changes"')
+
+        self.assertEqual(
+            broker.take_next(),
+            {"id": item_id, "command": 'select "Apply changes"'},
+        )
+        self.assertEqual(broker.result(item_id)["status"], "running")
+        self.assertTrue(broker.complete(item_id, {"ok": True, "msg": "selected"}))
+        self.assertEqual(
+            broker.result(item_id),
+            {"id": item_id, "status": "complete", "result": {"ok": True, "msg": "selected"}},
+        )
+
+    def test_rejects_empty_and_oversized_commands(self):
+        broker = server.CommandBroker()
+        with self.assertRaisesRegex(ValueError, "required"):
+            broker.enqueue("  ")
+        with self.assertRaisesRegex(ValueError, "too long"):
+            broker.enqueue("x" * 4097)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ mkdir -p \
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/packaging/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/packaging/pixelruller" "$PKGROOT/usr/bin/pixelruller"
+install -m 0755 "$ROOT/scripts/pixelruller_command.py" "$PKGROOT/usr/bin/pixelruller-command"
 install -m 0644 "$ROOT/packaging/pixelruller.desktop" "$PKGROOT/usr/share/applications/pixelruller.desktop"
 install -m 0644 "$ROOT/Assets/pixelruller-icon.png" "$PKGROOT/usr/share/pixmaps/pixelruller.png"
 

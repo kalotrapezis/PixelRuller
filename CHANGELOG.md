@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.0.3 — 2026-07-15
+
+- Complete the layout-fidelity pass: optional section captions, main-axis
+  justification, text wrap/ellipsis/clip, nested hug sizing, and scrollable
+  overflow now agree across canvas, JSON, XML, and generated HTML.
+- Add responsive `hideBelow` / `showBelow` visibility and ship AppLocker regular
+  and compact design variants as an editable breakpoint-state proof.
+- Add opt-in sidebar hide/show and scroll interactions in the editor and exported
+  HTML without turning PixelRuller into a general application-logic engine.
+- Add editable composite widgets with independent outer frames, per-corner radii,
+  subtree clipping, enter/exit editing, scaling, ungrouping, and serialization.
+- Improve GTK and KDE defaults with documented button padding, consistent action
+  sizing, shorter labels, neutral switch handles, and guideline-aware AI rules.
+- Add semantic HTML export parity for toolkit controls, responsive container
+  queries, interaction metadata, and embedded assets.
+- Add command-first co-design through `tree`, `inspect`, `selection`, and
+  `ui hide|show|toggle`, including a full-canvas focus view.
+- Add a thread-safe localhost command queue and the installed
+  `pixelruller-command` client so an AI can edit the open canvas without simulated
+  mouse or keyboard input while the user watches changes live.
+- Add deterministic browser layout self-tests and server tests for the command
+  broker, while preserving the existing screenshot backend tests.
+
 ## v0.0.2 — 2026-07-15
 
 - Add a responsive window-stage chooser: create an empty GTK/KDE window or

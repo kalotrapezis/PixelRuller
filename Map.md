@@ -8,7 +8,7 @@
 
 ## server.py
 
-The HTTP server captures the desktop via `spectacle` and manages file I/O. It runs a threaded Python stdlib server on localhost, serves static files from the `web/` directory, and exposes three POST endpoints for capture, saving annotated images, and exporting measurement JSON. Paths use locale-aware directory resolution (xdg-user-dir or fallbacks) to save to the user's Pictures folder.
+The HTTP server captures the desktop via `spectacle`, manages file I/O, and brokers localhost design commands between the CLI and open editor. It runs a threaded Python stdlib server on localhost and serves static files from the `web/` directory. Paths use locale-aware directory resolution (xdg-user-dir or fallbacks) to save to the user's Pictures folder.
 
 | Name | One-line summary |
 |------|-----------------|
@@ -16,11 +16,12 @@ The HTTP server captures the desktop via `spectacle` and manages file I/O. It ru
 | `save_dir()` | Return the PixelRuller subfolder in Pictures, creating it if needed. |
 | `capture_screenshot()` | Call `spectacle` with flags and return raw PNG bytes or raise. |
 | `unique_path(name, ext)` | Return a non-clobbering filename in PixelRuller folder by appending `_2`, `_3` etc. |
+| `CommandBroker` / `COMMAND_BROKER` | Thread-safe short-lived queue: enqueue a command, deliver it once to the open editor, store the shared `runCommand()` result for the CLI. |
 | `Handler.log_message()` | Suppress HTTP server log spam (empty override). |
 | `Handler._send(code, body, content_type)` | Send an HTTP response with headers and body. |
 | `Handler._read_json()` | Parse the request body as JSON (defaults to `{}`). |
-| `Handler.do_GET()` | Serve static files from `web/` directory; 404 if not found or outside directory. |
-| `Handler.do_POST()` | Route POST to `/capture`, `/save`, `/save-json` endpoints or 404. |
+| `Handler.do_GET()` | Serve files plus `/api/commands/next` and `/api/commands/result?id=...`. |
+| `Handler.do_POST()` | Route file/capture endpoints plus `/api/commands` enqueue and `/api/commands/result` completion. |
 | `Handler.handle_capture()` | Capture the desktop and return base64-encoded PNG as JSON. |
 | `Handler.handle_save()` | Accept a base64 PNG data URL and name; write PNG file to disk. |
 | `Handler.handle_save_json()` | Accept JSON payload and name; write JSON file to disk. |
@@ -72,26 +73,30 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `showStart()` / `hideStart()` | Show/hide the start-mode chooser overlay. |
 | `loadDesign(doc)` | Rebuild state (mode, canvas size, shapes, grid) from a design document. |
 | `loadDesignFromFile(file)` | Read a JSON File and pass parsed doc to loadDesign. |
-| `loadDesignFromUrl(path)` | Load a same-origin canonical JSON design from `?design=...`; used for reproducible examples and responsive UI tests. |
+| `loadDesignFromUrl(path)` | Load a same-origin canonical JSON design from `?design=...`; `preview=html` renders the generated HTML directly for reproducible parity/responsive checks. |
 | `drawElement(g, tf, s, showText)` | Draw a rect/ellipse/icon/widget element (dispatches icons & widgets). |
 | `drawWidget(g, tf, s, p, w, h, showText)` | Render UI widgets, including editable chrome/navigation controls and SVG icons embedded inside Buttons, Tool buttons, Menu items, and Textboxes. |
 | `.pp-copy` / `.pp-val` listeners | ⧉ copies a color hex to the clipboard; clicking a slider's value swaps it for a number input (Enter/blur applies, Esc cancels). |
 | `isContainer(s)` / `parentContainer(s)` | Section/Window test; smallest container holding a shape's center. |
 | `childrenOf(c)` / `slotOf(s)` | A container's children (by `parent` id; geometry fallback for legacy shapes); a child's slot order. |
+| `rootWindowOf(s)` / `responsiveVisible(s)` | Resolve the owning Window and apply runtime toggle plus `hideBelow` / `showBelow` state without destroying hidden elements or their slots. |
+| `interactionTargets(s)` / `toggleInteractionTarget(s)` | Resolve either control-centric or target-centric hide/show bindings inside the owning Window and toggle the target during canvas selection. |
 | `adoptShape(s)` | Re-parent a dropped/inserted element into the container under its center; insert at the slot matching drop position, renumber siblings. |
 | `strokeColor(s, c)` / `side4(v, def)` | Border color with the element's strokeOpacity applied; normalize margin/padding (number or object) to {t,r,b,l}. |
 | `copyStyle()` / `pasteStyle()` | Style clipboard: copy the selected element's effective style keys, apply to the selection (🖌 buttons). |
 | `THEMES` / `buildPalette()` / `renderSwatches()` / `applyThemeToDesign()` | GTK/KDE light+dark palettes in the bottom bar; swatch click=fill, right-click=border; theme the whole design by widget role. |
 | `refreshTree()` | Rebuild the sidebar Elements tree (hierarchy by parent/slot + free elements): click=select, drag=re-parent/reorder (+z lift), ▲=bring to front. Called from relayout/selection changes. |
-| `runCommand(str)` / `execCommand(str)` | Command-line entry point (logs to `cmdLog`) / the verb interpreter: add (including empty/deep-copy windows), set (dotted paths), move (dx/dy or into+slot), resize, del, copy, rename, select, arrange, theme, list, help. |
+| `runCommand(str)` / `execCommand(str)` | Shared mutation entry point and verb interpreter for the bottom bar and localhost CLI; includes design edits plus tree/list, inspect, selection, and command-focus UI control. |
+| `commandShapeLine()` / `commandTree()` | Produce structured hierarchy output with selection, id/slot, geometry, colors, visibility, and layout mode. |
+| `setCommandFocus()` / `pollRemoteCommands()` | Hide/restore editor chrome and number overlays; poll the localhost broker and execute each remote command through `runCommand()`. |
 | `findShape(ref)` / `tokenize` / `parseVal` | Resolve an element by id / exact name / name prefix; split a command into quoted-aware tokens; string→number/bool coercion. |
 | `#cmdInput` / `#cmdHist` (IIFE) | Bottom-bar command input: Enter runs, ↑/↓ history recall, popup of past commands (click to reuse). |
-| `hugDimensions()` / `prepareLayoutSize()` | Compute deterministic natural widget size from toolkit metrics/text and apply per-axis hug + min/max constraints. |
-| `arrangeInto(c)` | Layout core: fixed/fill/hug/percentage sizing, grow weights, wrap/spans, overflow extents, scroll offsets, and optional bound Scrollbar→parent control. |
+| `hugDimensions()` / `prepareLayoutSize()` | Compute deterministic natural widget/container size from text, descendants, padding, captions and gaps; apply wrapped-text hug + min/max constraints. |
+| `arrangeInto(c)` | Layout core: fixed/fill/hug/percentage sizing, cross-axis `align`, main-axis `justify`, responsive visibility, wrap/spans, overflow extents, scroll offsets, and optional bound Scrollbar→parent control. |
 | `containerViewport()` / `clipOverflowAncestors()` / `pointInsideOverflowAncestors()` | Compute content viewports; clip nested descendants while drawing and exclude clipped areas from hit-testing. |
 | `arrangeChildren(c)` | Manual Arrange button wrapper around arrangeInto (with toasts; for layout-"none" containers). |
 | `layoutWindows()` | Enforce each root Window's min/max size, stack roots vertically (margin/gap 60, one column) with their children, and auto-size the document extent to the visible window table. |
-| `relayout()` | Automatic layout pass (canvas mode): stack windows, then arrangeInto every container whose layout isn't "none" (undefined layout ⇒ auto vertical). Runs on drag-end/insert/paste/delete/property-edit/load. |
+| `relayout()` | Converging automatic layout passes (canvas mode): stack windows, stabilize nested hug sizes, then arrange every active container. Runs on drag-end/insert/paste/delete/property-edit/load. |
 | `WIDGETS` | Widget registry: per-toolkit defaults, including composable chrome/navigation widgets (Title/Status/Path bars, Tabs, Search, Split pane, Spacer, Window controls) and Menubar/Toolbar children. |
 | `insertWidget(kind, toolkit, at)` | Insert a toolkit widget at the view center or an explicit Library drop point; adopt it into the smallest container. |
 | `addPresetChild()` / `composeWindowPreset()` / `insertWindowPreset()` | Build editable toolkit trees from the supplied references. GTK follows `presets/GTK-Start.xml`. KDE follows `presets/KDE-Window.xml`, including full-width chrome and Toolbar → navigation buttons / growing spacer / Search / Hamburger. |
@@ -104,9 +109,11 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `copySelected/cutSelected/pasteClipboard/duplicateSelected` | Element clipboard operations. |
 | `buildFlowText()` / `saveFlowText()` | Build & save the plain-text flow outline (windows + contained widgets). |
 | `buildXml()` / `elementXml()` / `saveXml()` | Build & save the design as a nested XML tree (canvas>window>widget). |
-| `htmlChildSizing()` / `htmlNodeStyle()` / `htmlContainerStyle()` | Translate the canonical layout tree into CSS sizing, appearance, and nested container rules; percentage rows remain proportional and only explicit Fixed children become absolute. |
-| `htmlElement()` / `htmlLeaf()` | Translate containers and toolkit widgets into nested semantic HTML/native controls. |
+| `htmlChildSizing()` / `htmlNodeStyle()` / `htmlContainerStyle()` | Translate canonical sizing, text overflow, alignment and justification into CSS; percentage rows remain proportional and only explicit Fixed children become absolute. |
+| `htmlResponsiveCss()` | Export `hideBelow` / `showBelow` as Window-scoped CSS container queries. |
+| `htmlElement()` / `htmlLeaf()` / `htmlInteractionAttrs()` | Translate containers and toolkit widgets into nested semantic HTML/native controls and compile opt-in toggle/scroll metadata for the exported runtime. |
 | `embeddedAssets()` / `buildHtmlCode()` / `saveHtmlCode()` | Embed referenced assets and export a self-contained runnable `.html` file from the current design. |
+| `runLayoutSelfTests()` | Browser-level deterministic contract for caption offsets, justify/align geometry, JSON/XML/HTML interaction parity, command rejection, wrapped hug sizing, and responsive rules (`?selftest=1`). |
 | `centerIn(s, w)` | True if shape s's center lies within window w's bounds. |
 | `isWindow(s)` | True for the window widget (root parent, undeletable when sole). |
 | `getIconImage(src)` | Load & cache an SVG asset image from /assets/<src>; shared by standalone icons and icon-bearing widgets; re-renders on load. |
