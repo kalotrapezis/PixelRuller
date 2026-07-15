@@ -1904,6 +1904,10 @@ function layoutWindows() {
   const wins = state.shapes.filter(isWindow);
   let y = WIN_MARGIN, maxRight = 0;
   for (const w of wins) {
+    // Root windows honor their explicit minimum/maximum just like managed
+    // children. This lets an app design declare a safe desktop size that the
+    // properties panel, resize command, and responsive-variant copy cannot cross.
+    prepareLayoutSize(w);
     const dx = WIN_MARGIN - w.x, dy = y - w.y;
     if (dx || dy) {
       // Children travel with their window.

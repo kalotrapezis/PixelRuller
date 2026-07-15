@@ -259,9 +259,14 @@ the target application's existing code. Then:
 5. Reload the JSON and inspect the editor visually.
 6. Translate the approved hierarchy and properties into real application code.
 7. Test the implementation at every represented window size/state.
-8. Report the design file, code changes, visual checks, and any unavoidable
+8. Give the user a direct clickable/downloadable chat link to every approved
+   design artifact they need (at minimum the canonical JSON, plus generated code
+   or package when applicable). Never report only a filesystem location after a
+   co-design session.
+9. Report the design file, code changes, visual checks, and any unavoidable
    implementation difference.
 
 Completion means the approved visual state survives JSON reload, responsive
 layout works at multiple sizes, behavior remains in application code, and both
-the human and AI can continue from the same design file.
+the human and AI can continue from the same design file. The handoff is not
+complete until the user has a clickable artifact link in the chat.
