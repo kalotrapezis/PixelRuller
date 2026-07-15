@@ -17,6 +17,9 @@
 - Require AI co-design handoffs to include clickable artifact/download links.
 - Allow installation on systems without a packaged Spectacle; screenshot capture
   remains optional while canvas/UI-design mode stays fully available.
+- Auto-detect common KDE, GNOME, MATE, XFCE, Wayland, and X11 screenshot tools,
+  fall back between them, and allow any custom capture command through an
+  environment-variable template.
 - Document feature-number/fix-letter versioning.
 
 ## v0.0.1 — 2026-07-15
