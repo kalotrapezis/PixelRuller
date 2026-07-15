@@ -12,6 +12,9 @@
   commands, properties, widget catalogue, grouping, layout, official guideline
   sources, and the exact GTK/KDE palettes.
 - Add `pixelruller --print-ai-skill` and `--ai-skill-path` for installed AI tools.
+- Add a simple transparent GTK-palette PixelRuller application icon.
+- Set the PDFExtractor proof-of-concept window to a safe 1000×700 minimum size.
+- Require AI co-design handoffs to include clickable artifact/download links.
 - Document feature-number/fix-letter versioning.
 
 ## v0.0.1 — 2026-07-15

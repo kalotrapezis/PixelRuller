@@ -1,5 +1,7 @@
 # PixelRuller
 
+<img src="Assets/pixelruller-icon.png" alt="PixelRuller app icon" width="128">
+
 AI collaborators should read [`AI_SKILL.md`](AI_SKILL.md) before creating, editing, or implementing a PixelRuller UI design.
 
 Current release: **v0.0.2**
@@ -33,6 +35,8 @@ first complete proof of concept for the PixelRuller workflow. A human can edit
 the interface visually, while an AI reads the same hierarchy, percentage sizing,
 spacing, and styles to reproduce the application in real code. The redesign is
 based on the real [PDFExtractor project](https://github.com/kalotrapezis/PDFextract).
+Its window has a safe 1000×700 minimum, so the desktop UI stops shrinking before
+the document/settings columns and action bar become unusable.
 
 ## Run
 

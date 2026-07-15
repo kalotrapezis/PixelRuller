@@ -90,7 +90,7 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `arrangeInto(c)` | Layout core: fixed/fill/hug/percentage sizing, grow weights, wrap/spans, overflow extents, scroll offsets, and optional bound Scrollbar→parent control. |
 | `containerViewport()` / `clipOverflowAncestors()` / `pointInsideOverflowAncestors()` | Compute content viewports; clip nested descendants while drawing and exclude clipped areas from hit-testing. |
 | `arrangeChildren(c)` | Manual Arrange button wrapper around arrangeInto (with toasts; for layout-"none" containers). |
-| `layoutWindows()` | Auto-stack all Window widgets vertically (margin/gap 60, one column) with their children, and auto-size the document extent (state.W/H) to the window table. |
+| `layoutWindows()` | Enforce each root Window's min/max size, stack roots vertically (margin/gap 60, one column) with their children, and auto-size the document extent to the visible window table. |
 | `relayout()` | Automatic layout pass (canvas mode): stack windows, then arrangeInto every container whose layout isn't "none" (undefined layout ⇒ auto vertical). Runs on drag-end/insert/paste/delete/property-edit/load. |
 | `WIDGETS` | Widget registry: per-toolkit defaults, including composable chrome/navigation widgets (Title/Status/Path bars, Tabs, Search, Split pane, Spacer, Window controls) and Menubar/Toolbar children. |
 | `insertWidget(kind, toolkit, at)` | Insert a toolkit widget at the view center or an explicit Library drop point; adopt it into the smallest container. |
