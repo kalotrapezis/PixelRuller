@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PixelRuller</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="toolbar">
+    <div class="group">
+      <button id="newDoc" title="Start over (screenshot / blank canvas)">🆕 New</button>
+      <button id="capture" class="primary only-shot">📸 Capture</button>
+      <select id="timer" class="only-shot" title="Delay before capture">
+        <option value="0">no timer</option>
+        <option value="3">3s</option>
+        <option value="5">5s</option>
+        <option value="10">10s</option>
+      </select>
+    </div>
+
+    <div class="group" id="modeGroup" role="radiogroup" aria-label="Mode">
+      <span class="label">Mode</span>
+      <button class="mode active only-shot" data-mode="point">Point</button>
+      <button class="mode only-shot" data-mode="area">Area</button>
+      <button class="mode only-canvas" data-mode="rect">▭ Rect</button>
+      <button class="mode only-canvas" data-mode="ellipse">◯ Ellipse</button>
+      <button class="mode" data-mode="select">☝ Select</button>
+      <button class="mode only-canvas" data-mode="move">✋ Move</button>
+      <button class="mode only-canvas" data-mode="camera">📷 Camera</button>
+    </div>
+
+    <div class="group only-shot" role="radiogroup" aria-label="Snap">
+      <span class="label">Snap</span>
+      <button class="snap active" data-snap="off">Off</button>
+      <button class="snap" data-snap="90">90°</button>
+      <button class="snap" data-snap="45">45°</button>
+      <label class="checkbox" title="Snap to existing points/corners"><input id="snapPoints" type="checkbox" checked> points</label>
+      <label class="checkbox" title="While drawing, force each new segment to the length of the first one"><input id="eqLen" type="checkbox"> = length</label>
+    </div>
+
+    <div class="group" id="gridGroup">
+      <span class="label">Grid</span>
+      <button id="gridToggle">On</button>
+      <input id="gridSpacing" type="number" min="2" max="500" step="1" value="50" title="Grid spacing (px)">
+      <span class="unit">px</span>
+    </div>
+
+    <div class="group" id="showGroup">
+      <span class="label">Show</span>
+      <label class="checkbox"><input id="showNumbers" type="checkbox" checked> numbers</label>
+    </div>
+
+    <div class="group">
+      <span class="label" id="nameGroupLabel">Area</span>
+      <input id="areaName" type="text" placeholder="name" size="8">
+      <input id="areaLabel" type="text" placeholder="label" size="8">
+      <input id="areaColor" type="color" value="#ff3b30" title="Border / stroke color">
+      <input id="fillColor" class="only-canvas" type="color" value="#4a9eff" title="Fill color">
+      <label class="checkbox only-canvas" title="Corner roundness (px)">r <input id="radius" type="number" min="0" max="200" value="8" size="3" style="width:52px"></label>
+    </div>
+
+    <div class="group" id="actionGroup">
+      <button id="finish" class="only-shot" title="Close/finish the current area (Enter)">✓ Finish</button>
+      <button id="equalize" class="only-shot" title="Make all segments of the selected area the same length">≡ Equalize</button>
+      <button id="copyBtn" class="only-canvas" title="Copy (Ctrl+C)">⧉ Copy</button>
+      <button id="cutBtn" class="only-canvas" title="Cut (Ctrl+X)">✂ Cut</button>
+      <button id="pasteBtn" class="only-canvas" title="Paste (Ctrl+V)">📋 Paste</button>
+      <button id="deleteBtn" class="only-canvas" title="Delete selected (Del)">🗑 Delete</button>
+      <button id="copyStyleBtn" class="only-canvas" title="Copy the selected element's style/properties">🖌 Style</button>
+      <button id="pasteStyleBtn" class="only-canvas" title="Apply the copied style to the selection">🖌 Apply</button>
+      <button id="groupBtn" class="only-canvas" title="Group selection (Ctrl+G)">▣ Group</button>
+      <button id="makeWidgetBtn" class="only-canvas" title="Wrap 3+ selected elements as one editable composite">◈ Make Widget</button>
+      <button id="enterWidgetBtn" class="only-canvas" title="Edit the selected composite's children">Enter</button>
+      <button id="exitWidgetBtn" class="only-canvas" title="Leave composite editing">Exit</button>
+      <button id="ungroupBtn" class="only-canvas" title="Ungroup section (Ctrl+Shift+G)">▢ Ungroup</button>
+      <button id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <button id="clear" title="Remove everything">🧹 Clear</button>
+    </div>
+
+    <div class="group">
+      <button id="save" class="primary" title="Save annotated image (Ctrl+S)">💾 Save</button>
+      <button id="exportJson" title="Save the whole design as a JSON file (Ctrl+J)">{ } JSON</button>
+      <button id="exportXml" class="only-canvas" title="Export the design as XML">&lt;/&gt; XML</button>
+      <button id="exportCode" class="only-canvas" title="Export runnable nested HTML/CSS">&lt;/&gt; Code</button>
+      <button id="flowText" class="only-canvas" title="Export a text flow-chart outline">▤ Flow</button>
+      <button id="loadJson" title="Load a design.json file (Ctrl+O)">📂 Load</button>
+      <label class="checkbox"><input id="autosave" type="checkbox"> auto-save areas</label>
+    </div>
+
+    <div class="group grow">
+      <span id="coords" class="coords">—</span>
+    </div>
+  </div>
+
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="hint" class="hint"></div>
+    <div id="countdown" class="countdown"></div>
+    <div id="distBox" class="distbox"></div>
+    <div id="scaleBox" class="scalebox">100%</div>
+    <button id="addWin" class="addwin only-canvas" title="Add the active toolkit window preset (new row)">＋</button>
+  </div>
+
+  <div id="bottomBar" class="bottombar">
+    <div class="group only-canvas" id="paletteGroup">
+      <span class="label">Theme</span>
+      <select id="themeSel"></select>
+      <div id="swatches" class="swatches" title="Click: fill · Right-click: border"></div>
+      <button id="applyTheme" title="Apply this theme's colors to the whole design">🎨 Theme design</button>
+    </div>
+    <div class="group grow only-canvas" id="cmdGroup">
+      <span class="label">cmd</span>
+      <div class="cmd-wrap">
+        <input id="cmdInput" type="text" placeholder='command… try "help"' spellcheck="false" autocomplete="off">
+        <div id="cmdHist" class="cmd-hist" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="library" class="library">
+    <div class="lib-head">
+      <span>Library</span>
+      <button id="libCollapse" title="Collapse / expand">⟩</button>
+    </div>
+    <div class="lib-body">
+      <div class="lib-cats">
+        <button class="lib-cat active" data-cat="widgets">Widgets</button>
+        <button class="lib-cat" data-cat="icons">Icons</button>
+      </div>
+      <div id="libToolkits" class="lib-toolkits">
+        <button class="lib-tk active" data-tk="gtk4">GTK 4</button>
+        <button class="lib-tk" data-tk="kde">KDE</button>
+      </div>
+      <input id="libSearch" class="lib-search" type="text" placeholder="search widgets…">
+      <div id="libGrid" class="lib-grid" hidden></div>
+      <div id="libWidgets" class="lib-widgets"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="start" class="start">
+    <div class="start-card">
+      <div class="start-title">PixelRuller</div>
+      <div class="start-sub">Start a design</div>
+      <div class="start-actions">
+        <button id="startShot" class="start-btn">
+          <span class="start-icon">📸</span>
+          <span class="start-name">Screenshot</span>
+          <span class="start-desc">capture the desktop to measure or redline over</span>
+        </button>
+        <button id="startBlank" class="start-btn">
+          <span class="start-icon">🎨</span>
+          <span class="start-name">New canvas</span>
+          <span class="start-desc">an empty design canvas</span>
+        </button>
+      </div>
+      <div class="start-row">
+        Canvas size
+        <input id="startW" type="number" min="1" value="1920"> ×
+        <input id="startH" type="number" min="1" value="1080"> px
+      </div>
+      <div class="start-row">
+        <button id="startLoad" class="start-load">📂 Load a design.json…</button>
+      </div>
+    </div>
+  </div>
+
+  <input id="fileInput" type="file" accept=".json,application/json" hidden>
+
+  <div id="sidebar" class="sidebar">
+    <div class="sb-head">
+      <span>Panel</span>
+      <button id="sbCollapse" title="Collapse / expand">⟨</button>
+    </div>
+    <div class="sb-body">
+      <section class="pp-sec" id="toolsSec">
+        <div class="pp-sec-head">Tools <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body" id="toolsHost"></div>
+      </section>
+      <section class="pp-sec" id="treeSec">
+        <div class="pp-sec-head">Elements <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body pp-sec-flush" id="treeHost" title="Click: select · Drag: re-parent / reorder · ▲: bring to front"></div>
+      </section>
+  <div id="propPanel" class="proppanel empty">
+    <div class="pp-head">
+      <span id="ppTitle">Properties</span>
+      <button id="ppClose" title="Deselect (Esc)">✕</button>
+    </div>
+    <div class="pp-empty">Select an element to edit its properties</div>
+    <div class="pp-sections">
+      <section class="pp-sec">
+        <div class="pp-sec-head">Position &amp; size <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <div class="pp-row">
+            <label>X <input id="ppX" type="number"></label>
+            <label>Y <input id="ppY" type="number"></label>
+          </div>
+          <div class="pp-row">
+            <label>W <input id="ppW" type="number" min="1"></label>
+            <label>H <input id="ppH" type="number" min="1"></label>
+          </div>
+          <label class="pp-check" title="Pinned / absolutely positioned (doesn't scroll with content)"><input id="ppFixed" type="checkbox"> Fixed position</label>
+          <label class="pp-full">Parent
+            <select id="ppParent"></select>
+          </label>
+          <div class="pp-kids" id="ppKids" hidden></div>
+          <div class="pp-row">
+            <label>Depth <input id="ppZ" type="number"></label>
+            <button id="ppFront" type="button" title="Bring to front">▲ Front</button>
+            <button id="ppBack" type="button" title="Send to back">▼ Back</button>
+          </div>
+        </div>
+      </section>
+      <section class="pp-sec">
+        <div class="pp-sec-head">Layout sizing <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <div class="pp-row">
+            <label>Width
+              <select id="ppSizeX"><option value="fixed">fixed</option><option value="fill">fill</option><option value="percent">percentage</option><option value="hug">hug content</option></select>
+            </label>
+            <label>Height
+              <select id="ppSizeY"><option value="fixed">fixed</option><option value="fill">fill</option><option value="percent">percentage</option><option value="hug">hug content</option></select>
+            </label>
+          </div>
+          <div class="pp-row">
+            <label>Width % <input id="ppPercentW" type="number" min="0" max="100" step="0.1"></label>
+            <label>Height % <input id="ppPercentH" type="number" min="0" max="100" step="0.1"></label>
+          </div>
+          <label>Grow weight <input id="ppGrow" type="number" min="0" step="0.1"></label>
+          <div class="pp-row">
+            <label>Min W <input id="ppMinW" type="number" min="0"></label>
+            <label>Max W <input id="ppMaxW" type="number" min="0" placeholder="none"></label>
+          </div>
+          <div class="pp-row">
+            <label>Min H <input id="ppMinH" type="number" min="0"></label>
+            <label>Max H <input id="ppMaxH" type="number" min="0" placeholder="none"></label>
+          </div>
+          <div class="pp-row">
+            <label>Column span <input id="ppColSpan" type="number" min="1"></label>
+            <label>Row span <input id="ppRowSpan" type="number" min="1"></label>
+          </div>
+        </div>
+      </section>
+      <section class="pp-sec">
+        <div class="pp-sec-head">Appearance <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-check"><input id="ppFilled" type="checkbox"> Filled</label>
+          <label class="pp-full">Fill <input id="ppFill" type="color"><button class="pp-copy" data-copy="ppFill" title="Copy color" tabindex="-1">⧉</button></label>
+          <label class="pp-slider">Radius <input id="ppRadius" type="range" min="0" max="200" step="1"><span id="ppRadiusv" class="pp-val">0</span></label>
+          <label class="pp-slider">Opacity <input id="ppOpacity" type="range" min="0" max="100" step="1"><span id="ppOpacityv" class="pp-val">100</span></label>
+        </div>
+      </section>
+      <section class="pp-sec" id="ppCompositeSec" hidden>
+        <div class="pp-sec-head">Composite frame <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <div class="pp-note">Frame styling and corner clipping belong to the composite only; child styles and geometry stay independent.</div>
+          <label class="pp-check"><input id="ppCornersLinked" type="checkbox" checked> Link all corners</label>
+          <div class="pp-side-grid">
+            <span class="pp-side-lbl">Radius</span>
+            <label>TL <input id="ppRadiusTL" type="number" min="0"></label>
+            <label>TR <input id="ppRadiusTR" type="number" min="0"></label>
+            <label>BR <input id="ppRadiusBR" type="number" min="0"></label>
+            <label>BL <input id="ppRadiusBL" type="number" min="0"></label>
+          </div>
+          <label>Resize
+            <select id="ppResizeMode"><option value="reflow">frame / reflow children</option><option value="scale">scale everything</option></select>
+          </label>
+          <div class="pp-row"><button id="ppEnterComposite" type="button">Enter child editing</button><button id="ppExitComposite" type="button">Exit child editing</button></div>
+        </div>
+      </section>
+      <section class="pp-sec">
+        <div class="pp-sec-head">Border <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-full">Color <input id="ppStroke" type="color"><button class="pp-copy" data-copy="ppStroke" title="Copy color" tabindex="-1">⧉</button></label>
+          <label class="pp-slider">Width <input id="ppStrokeW" type="range" min="0" max="20" step="1"><span id="ppStrokeWv" class="pp-val">1</span></label>
+          <label class="pp-slider">Opacity <input id="ppStrokeO" type="range" min="0" max="100" step="1"><span id="ppStrokeOv" class="pp-val">100</span></label>
+        </div>
+      </section>
+      <section class="pp-sec">
+        <div class="pp-sec-head">Spacing <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <div class="pp-side-grid">
+            <span class="pp-side-lbl">Margin</span>
+            <label>T <input id="ppMarT" type="number" min="0"></label>
+            <label>R <input id="ppMarR" type="number" min="0"></label>
+            <label>B <input id="ppMarB" type="number" min="0"></label>
+            <label>L <input id="ppMarL" type="number" min="0"></label>
+          </div>
+          <div class="pp-side-grid">
+            <span class="pp-side-lbl">Padding</span>
+            <label>T <input id="ppPadT" type="number" min="0"></label>
+            <label>R <input id="ppPadR" type="number" min="0"></label>
+            <label>B <input id="ppPadB" type="number" min="0"></label>
+            <label>L <input id="ppPadL" type="number" min="0"></label>
+          </div>
+        </div>
+      </section>
+      <section class="pp-sec">
+        <div class="pp-sec-head">Text <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-full">Text <input id="ppText" type="text"></label>
+          <label class="pp-slider">Font <input id="ppFont" type="range" min="6" max="96" step="1"><span id="ppFontv" class="pp-val">14</span></label>
+          <div class="pp-row">
+            <label>Align H
+              <select id="ppAlignH"><option value="left">left</option><option value="center" selected>center</option><option value="right">right</option></select>
+            </label>
+            <label>Align V
+              <select id="ppAlignV"><option value="top">top</option><option value="middle" selected>middle</option><option value="bottom">bottom</option></select>
+            </label>
+          </div>
+          <label class="pp-full">Text color <input id="ppTextColor" type="color"><button class="pp-copy" data-copy="ppTextColor" title="Copy color" tabindex="-1">⧉</button></label>
+        </div>
+      </section>
+      <section class="pp-sec" id="ppIconSec" hidden>
+        <div class="pp-sec-head">Icon / SVG <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-full">Asset
+            <select id="ppIcon"><option value="">None</option></select>
+          </label>
+          <label class="pp-slider">Size <input id="ppIconSize" type="range" min="8" max="128" step="1"><span id="ppIconSizev" class="pp-val">18</span></label>
+          <label class="pp-full">Placement
+            <select id="ppIconPosition">
+              <option value="left">left of text</option>
+              <option value="right">right of text</option>
+              <option value="top">above text</option>
+              <option value="bottom">below text</option>
+              <option value="only">icon only</option>
+            </select>
+          </label>
+          <label>Gap <input id="ppIconGap" type="number" min="0" max="64"></label>
+          <div class="pp-note">The widget's fill remains its background. Clear Text or choose icon only for controls such as a hamburger button.</div>
+        </div>
+      </section>
+      <section class="pp-sec" id="ppStateSec">
+        <div class="pp-sec-head">State <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-check" id="ppStateBoolRow"><input id="ppStateBool" type="checkbox"> <span id="ppStateBoolLbl">Checked</span></label>
+          <label class="pp-slider" id="ppStateValRow">Value <input id="ppStateVal" type="range" min="0" max="100" step="1"><span id="ppStateValv" class="pp-val">0</span></label>
+          <label id="ppStateCountRow">Rows <input id="ppStateCount" type="number" min="0" max="50"></label>
+          <label class="pp-check" id="ppScrollBindRow"><input id="ppScrollBind" type="checkbox"> Bind to parent scrolling</label>
+        </div>
+      </section>
+      <section class="pp-sec" id="ppLayoutSec">
+        <div class="pp-sec-head">Layout <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label>Layout
+            <select id="ppLayout"><option value="none">none</option><option value="vertical">vertical</option><option value="horizontal">horizontal</option><option value="table">table</option></select>
+          </label>
+          <label>Align
+            <select id="ppAlign"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+          </label>
+          <label>Gap <input id="ppGap" type="number" min="0"></label>
+          <label>Columns <input id="ppCols" type="number" min="1"></label>
+          <label class="pp-check"><input id="ppWrap" type="checkbox"> Wrap children</label>
+          <label>Overflow
+            <select id="ppOverflow"><option value="visible">visible</option><option value="clip">clip</option><option value="scroll">scroll</option></select>
+          </label>
+          <div class="pp-row" id="ppScrollRow">
+            <label>Scroll X <input id="ppScrollX" type="number" min="0"></label>
+            <label>Scroll Y <input id="ppScrollY" type="number" min="0"></label>
+          </div>
+          <button id="ppArrange" type="button">⤢ Arrange children</button>
+        </div>
+      </section>
+      <section class="pp-sec">
+        <div class="pp-sec-head">Name <span class="pp-caret">▾</span></div>
+        <div class="pp-sec-body">
+          <label class="pp-full">Name <input id="ppName" type="text"></label>
+        </div>
+      </section>
+    </div>
+  </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+Package: pixelruller
+Version: @VERSION@
+Section: graphics
+Priority: optional
+Architecture: all
+Maintainer: Theologos Kalotrapezis <kalotrapezis@users.noreply.github.com>
+Depends: python3, spectacle
+Recommends: xdg-user-dirs
+Homepage: https://github.com/kalotrapezis/PixelRuller
+Description: pixel-perfect screenshot measurement and AI UI design tool
+ PixelRuller measures and annotates screenshots, designs responsive desktop
+ interfaces with semantic widgets, and exports a shared canonical design that
+ humans and AI collaborators can edit and implement together.

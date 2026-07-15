@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Canonical minimal GNOME/GTK window preset, supplied by Teo. -->
+<design app="PixelRuller" mode="canvas">
+  <canvas width="1960" height="1120"/>
+  <window name="Session" x="60" y="60" w="1840" h="1000">
+    <titlebar name="Title bar" x="60" y="60" w="1840" h="44" fill="#f6f5f4" stroke="#c9ced6" z="2"/>
+    <toolbutton name="ForwordButton" x="67" y="67" w="30" h="30" radius="6" text="←" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="8"/>
+    <toolbutton name="BackwordsButton" x="103" y="67" w="30" h="30" radius="6" text="→" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="9"/>
+    <toolbutton name="NewTabButton" x="139" y="67" w="30" h="30" radius="6" text="＋" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="10"/>
+    <label name="Window title" x="175" y="67" w="1591" h="37" text="Session" fill="#000000" stroke="#000000" z="10.5"/>
+    <toolbutton name="Tool 4" x="1772" y="67" w="30" h="30" radius="6" text="☰" icon-size="18" icon-position="only" fill="#e7eaee" stroke="#c9ced6" z="11"/>
+    <wincontrols name="Window buttons" x="1808" y="67" w="92" h="28" stroke="none" z="6"/>
+    <spacer name="Start" x="60" y="104" w="1840" h="956" stroke="none" z="3"/>
+  </window>
+</design>
