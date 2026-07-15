@@ -16,10 +16,13 @@ An AI does not need root access to use PixelRuller. It needs:
 - browser-control access to the local PixelRuller tab to operate the visual UI;
 - read/write access to the project design JSON if it will update that file.
 
-Screenshot capture additionally requires a graphical KDE session and Spectacle.
-Canvas design, JSON loading, commands, and code export do not need screenshot
-permission. An AI without browser control can still read and implement exported
-JSON, but it cannot click or visually verify the live editor.
+Screenshot capture additionally requires a graphical desktop session and any
+supported screenshot tool. PixelRuller auto-detects Spectacle, GNOME/MATE/XFCE
+Screenshot, Grim, Flameshot, Scrot, Maim, or Shutter, and accepts a custom
+`PIXELRULLER_SCREENSHOT_COMMAND` containing `{output}`. Canvas design, JSON
+loading, commands, and code export do not need screenshot permission. An AI
+without browser control can still read and implement exported JSON, but it cannot
+click or visually verify the live editor.
 
 Useful installed commands:
 
@@ -29,6 +32,7 @@ pixelruller --no-open               Start without opening a browser
 pixelruller --port 8765             Use a known local port
 pixelruller --grid                  Start in screenshot/grid mode
 pixelruller --version               Print the installed version
+pixelruller --screenshot-backends   List detected screenshot tools
 pixelruller --ai-skill-path         Print this guide's installed path
 pixelruller --print-ai-skill        Print this complete guide
 ```

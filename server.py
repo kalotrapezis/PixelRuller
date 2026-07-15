@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""PixelRuller — a zero-dependency pixel-measuring tool for Linux/Wayland (KDE).
+"""PixelRuller — a zero-dependency pixel-measuring and UI-design tool for Linux.
 
-The Python side only captures the desktop (via `spectacle`) and writes annotated
-images to disk. All the interactive measuring happens in the browser canvas.
+The Python side uses the first compatible desktop screenshot command it finds
+and writes annotated images to disk. All interactive work happens in the browser.
 
 Usage:
     python3 server.py            # start the app and open it in the browser
@@ -10,11 +10,14 @@ Usage:
     python3 server.py --no-open  # start without launching a browser
     python3 server.py --port N   # listen on a specific port (default: auto)
     python3 server.py --print-ai-skill  # print the complete AI usage guide
+    python3 server.py --screenshot-backends  # list detected capture tools
 """
 
 import base64
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -66,24 +69,77 @@ def save_dir():
     return d
 
 
+SCREENSHOT_TOOLS = (
+    ("Spectacle", "spectacle", lambda out: ["spectacle", "-b", "-n", "-f", "-o", out]),
+    ("GNOME Screenshot", "gnome-screenshot", lambda out: ["gnome-screenshot", "-f", out]),
+    ("MATE Screenshot", "mate-screenshot", lambda out: ["mate-screenshot", "-f", out]),
+    ("XFCE Screenshooter", "xfce4-screenshooter", lambda out: ["xfce4-screenshooter", "-f", "-s", out]),
+    ("Grim", "grim", lambda out: ["grim", out]),
+    ("Flameshot", "flameshot", lambda out: ["flameshot", "full", "-p", out]),
+    ("Scrot", "scrot", lambda out: ["scrot", "-o", out]),
+    ("Maim", "maim", lambda out: ["maim", out]),
+    ("Shutter", "shutter", lambda out: ["shutter", "-f", "-e", "-n", "-o", out]),
+)
+
+
+def screenshot_commands(output_path):
+    """Yield available (display name, argv) capture backends in preference order."""
+    custom = os.environ.get("PIXELRULLER_SCREENSHOT_COMMAND", "").strip()
+    if custom:
+        rendered = custom.replace("{output}", output_path)
+        argv = shlex.split(rendered)
+        if "{output}" not in custom:
+            argv.append(output_path)
+        if argv:
+            yield "Custom command", argv
+    for name, executable, command in SCREENSHOT_TOOLS:
+        if shutil.which(executable):
+            yield name, command(output_path)
+
+
+def detected_screenshot_backends():
+    """Return names of capture tools currently available on PATH."""
+    names = []
+    if os.environ.get("PIXELRULLER_SCREENSHOT_COMMAND", "").strip():
+        names.append("Custom command")
+    names.extend(name for name, executable, _ in SCREENSHOT_TOOLS if shutil.which(executable))
+    return names
+
+
 def capture_screenshot():
-    """Capture the full desktop and return raw PNG bytes, or raise on failure."""
+    """Capture the full desktop and return (raw PNG bytes, backend name)."""
     fd, tmp = tempfile.mkstemp(suffix=".png", prefix="pixelruller_")
     os.close(fd)
+    os.remove(tmp)  # capture tools should create the output themselves
     try:
-        # -b background, -n no notification, -f fullscreen, -S drop window shadows
-        result = subprocess.run(
-            ["spectacle", "-b", "-n", "-f", "-o", tmp],
-            capture_output=True,
-            timeout=30,
-        )
-        if not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
+        attempts = []
+        commands = list(screenshot_commands(tmp))
+        if not commands:
             raise RuntimeError(
-                "spectacle produced no image. stderr:\n"
-                + result.stderr.decode("utf-8", "replace")
+                "No compatible screenshot tool found. Install Spectacle, "
+                "GNOME Screenshot, MATE Screenshot, XFCE Screenshooter, Grim, "
+                "Flameshot, Scrot, Maim, or Shutter; or set "
+                "PIXELRULLER_SCREENSHOT_COMMAND with an {output} placeholder."
             )
-        with open(tmp, "rb") as fh:
-            return fh.read()
+        for name, command in commands:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                result = subprocess.run(
+                    command, capture_output=True, text=True, timeout=30, check=False
+                )
+                if result.returncode == 0 and os.path.isfile(tmp) and os.path.getsize(tmp) > 8:
+                    with open(tmp, "rb") as fh:
+                        png = fh.read()
+                    if png.startswith(b"\x89PNG\r\n\x1a\n"):
+                        return png, name
+                    attempts.append(f"{name}: output was not PNG")
+                else:
+                    detail = (result.stderr or result.stdout or "no image produced").strip()
+                    attempts.append(f"{name}: {detail[:240]}")
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                attempts.append(f"{name}: {exc}")
+        raise RuntimeError("Screenshot capture failed. " + " | ".join(attempts))
     finally:
         try:
             os.remove(tmp)
@@ -169,12 +225,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_capture(self):
         try:
-            png = capture_screenshot()
+            png, backend = capture_screenshot()
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI
             self._send(500, json.dumps({"error": str(exc)}))
             return
         data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
-        self._send(200, json.dumps({"image": data_url}))
+        self._send(200, json.dumps({"image": data_url, "backend": backend}))
 
     def handle_save(self):
         try:
@@ -237,6 +293,10 @@ def main():
         except OSError as exc:
             print(f"Could not read {AI_SKILL_PATH}: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
+        return
+    if "--screenshot-backends" in args:
+        names = detected_screenshot_backends()
+        print("\n".join(names) if names else "No compatible screenshot tools detected")
         return
     open_browser = "--no-open" not in args
     grid = "--grid" in args

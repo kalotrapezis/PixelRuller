@@ -1134,7 +1134,7 @@ async function capture() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "capture failed");
     await loadImage(data.image);
-    toast("Captured " + state.W + "×" + state.H);
+    toast("Captured " + state.W + "×" + state.H + (data.backend ? " with " + data.backend : ""));
   } catch (err) {
     hintEl.textContent = "";
     toast("Capture failed: " + err.message, true);

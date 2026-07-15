@@ -10,9 +10,9 @@ A pixel-measuring tool for counting screen distances, positions, and areas.
 It grabs a full screenshot, overlays a ruler grid, and lets you drop points or
 draw measured line/area shapes on top — AutoCAD-style crosshair included.
 
-Built for **KDE Plasma on Wayland (Ubuntu)** with **zero dependencies**: a tiny
-Python-stdlib server captures the screen with `spectacle` and saves images; all
-the interactive measuring happens on an HTML canvas in your browser.
+Built for Linux desktops with a tiny Python-stdlib server. Screenshot capture
+automatically uses an available desktop tool; all interactive measuring and UI
+design happens on an HTML canvas in your browser.
 
 ## See it in action
 
@@ -63,9 +63,18 @@ Then launch **PixelRuller** from the application menu or run `pixelruller` in a
 terminal. Build the package locally with `packaging/build-deb.sh`; the result is
 written to `dist/`.
 
-Spectacle is optional at package-install time. Canvas design, JSON loading, AI
-co-design, and code export work without it; only desktop screenshot capture
-requires Spectacle to be available in the graphical session.
+Screenshot tools are optional at package-install time. Canvas design, JSON
+loading, AI co-design, and code export work without one. For capture, PixelRuller
+tries Spectacle, GNOME/MATE/XFCE Screenshot, Grim, Flameshot, Scrot, Maim, and
+Shutter in order, falling back when an installed tool fails. Check detection with
+`pixelruller --screenshot-backends`.
+
+Any other screenshot program can be used through an override. `{output}` is
+replaced by a temporary PNG path and the command is executed without a shell:
+
+```bash
+PIXELRULLER_SCREENSHOT_COMMAND='my-screenshot-tool --output {output}' pixelruller
+```
 
 The package installs `/usr/bin/pixelruller`, so the command is system-wide after
 installation. Root is not required to run it. An AI needs browser-control access
@@ -263,7 +272,7 @@ so the closer you zoom the more precise each placement is.
 
 ## Files
 
-- `server.py` — capture (`spectacle`) + save endpoints, static file serving.
+- `server.py` — automatic multi-tool screenshot capture, save endpoints, and static file serving.
 - `web/index.html`, `web/style.css`, `web/app.js` — the canvas app.
 - `run.sh` — launcher.
 
