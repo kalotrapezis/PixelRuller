@@ -1,16 +1,18 @@
 # PixelRuller
 
+<img src="Assets/pixelruller-icon.png" alt="PixelRuller app icon" width="128">
+
 AI collaborators should read [`AI_SKILL.md`](AI_SKILL.md) before creating, editing, or implementing a PixelRuller UI design.
 
-Current release: **v0.0.1**
+Current release: **v0.0.3**
 
 A pixel-measuring tool for counting screen distances, positions, and areas.
 It grabs a full screenshot, overlays a ruler grid, and lets you drop points or
 draw measured line/area shapes on top — AutoCAD-style crosshair included.
 
-Built for **KDE Plasma on Wayland (Ubuntu)** with **zero dependencies**: a tiny
-Python-stdlib server captures the screen with `spectacle` and saves images; all
-the interactive measuring happens on an HTML canvas in your browser.
+Built for Linux desktops with a tiny Python-stdlib server. Screenshot capture
+automatically uses an available desktop tool; all interactive measuring and UI
+design happens on an HTML canvas in your browser.
 
 ## See it in action
 
@@ -33,6 +35,16 @@ first complete proof of concept for the PixelRuller workflow. A human can edit
 the interface visually, while an AI reads the same hierarchy, percentage sizing,
 spacing, and styles to reproduce the application in real code. The redesign is
 based on the real [PDFExtractor project](https://github.com/kalotrapezis/PDFextract).
+Its window has a safe 1000×700 minimum, so the desktop UI stops shrinking before
+the document/settings columns and action bar become unusable.
+
+[`AppLockerUI.json`](web/AppLockerUI.json) is the breakpoint-state proof. It
+contains regular and compact Window variants: below 600 px the settings
+navigation is hidden, the content expands, and a Back button appears in the
+title bar. The same `hideBelow` / `showBelow` data drives the canvas, JSON/XML,
+hit-testing, and container-query rules in generated HTML. Its navigation also
+demonstrates opt-in UI interaction: the sidebar names **Back** as its toggle
+control, while the content area enables wheel scrolling.
 
 ## Run
 
@@ -49,15 +61,43 @@ Check the installed or source version with:
 
 ## Install the Debian package
 
-Download `pixelruller_0.0.1_all.deb` from the GitHub release and install it with:
+Download `pixelruller_0.0.3_all.deb` from the GitHub release and install it with:
 
 ```bash
-sudo apt install ./pixelruller_0.0.1_all.deb
+sudo apt install ./pixelruller_0.0.3_all.deb
 ```
 
 Then launch **PixelRuller** from the application menu or run `pixelruller` in a
 terminal. Build the package locally with `packaging/build-deb.sh`; the result is
 written to `dist/`.
+
+Screenshot tools are optional at package-install time. Canvas design, JSON
+loading, AI co-design, and code export work without one. For capture, PixelRuller
+tries Spectacle, GNOME/MATE/XFCE Screenshot, Grim, Flameshot, Scrot, Maim, and
+Shutter in order, falling back when an installed tool fails. On current Kubuntu,
+the `spectacle` executable is supplied by the `kde-spectacle` package. Check
+detection with `pixelruller --screenshot-backends`.
+
+Any other screenshot program can be used through an override. `{output}` is
+replaced by a temporary PNG path and the command is executed without a shell:
+
+```bash
+PIXELRULLER_SCREENSHOT_COMMAND='my-screenshot-tool --output {output}' pixelruller
+```
+
+The package installs `/usr/bin/pixelruller`, so the command is system-wide after
+installation. Root is not required to run it. With a canvas design open, an AI
+can use the installed `pixelruller-command` client to operate the live editor
+through its localhost command queue; browser control is only needed to open/load
+and visually verify the design. Print the complete platform-neutral guide with
+`pixelruller --print-ai-skill`.
+
+```bash
+pixelruller-command 'select "Apply changes"'
+pixelruller-command 'tree "AppLocker Settings Compact" all'
+pixelruller-command 'ui hide'   # canvas-only command focus
+pixelruller-command 'ui show'
+```
 
 On launch you pick a **start mode**:
 
@@ -65,8 +105,8 @@ On launch you pick a **start mode**:
 - **🎨 New canvas** — start an empty design canvas at a size you choose.
 - **📂 Load a design.json** — reopen a previously saved design.
 
-Use the **timer** dropdown next to Capture (3s / 5s / 10s) to delay a shot — a
-full-screen countdown gives you time to open a menu or hover a tooltip first.
+The screenshot timer defaults to **10 seconds**; choose no timer, 3s, 5s, or 10s
+as needed. A full-screen countdown gives you time to open a menu or hover a tooltip.
 The **🆕 New** button reopens the start chooser at any time. Annotated images are
 saved to `~/Εικόνες/PixelRuller/` (your Pictures folder + `PixelRuller`).
 
@@ -171,6 +211,11 @@ pointing tools.
   via the properties panel, and round-tripped through `design.json`.
 - A new blank canvas opens with a default **Window named "Session"** (PC apps
   have windows, not phone screens — analogous to Android activities).
+- The floating **＋** opens an **Add window** chooser. Create a new empty GTK/KDE
+  window, or duplicate any existing window with its complete widget tree. Give
+  the copy another width/height to test a compact, regular, wide, loading, error,
+  or complete stage. Every root stays visible on the same canvas so a human and
+  AI can compare all sizes/states together.
 - **Copy / Cut / Paste / Duplicate / Delete** — `Ctrl+C` / `X` / `V` / `D` and
   `Del` on the selected element (paste is offset and auto-renamed). In creation
   mode the tool + edit buttons (Select/Rect/Ellipse, Copy/Cut/Paste/Delete/Undo/
@@ -195,9 +240,18 @@ pointing tools.
   parent/slot tree becomes nested DOM; layout/sizing/style/state become CSS and
   native controls; referenced assets are embedded. Only explicit **Fixed** mode
   generates absolute positioning. JSON remains the canonical editable format.
+- **Responsive visibility** — Properties exposes **Hide below W** and
+  **Show below W**. Values are measured against the owning Window width, so a
+  compact state can replace desktop-only navigation with mobile-style controls.
+- **Interaction** — enable interaction on a Button/Tool button/Menu item and
+  name the section it toggles, or enable it on a Section and name the control
+  that hides/shows it. Scroll containers can independently enable or disable
+  wheel/range scrolling. These fields round-trip through JSON/XML and work in
+  the canvas and generated HTML.
 - The current **zoom %** shows at the bottom-left of the canvas.
-- The **Window** is the always-present root parent (the "Session") — it can't be
-  deleted, and a new canvas starts with one.
+- A **Window** is a root parent. The final root cannot be deleted, and a new
+  canvas starts with one; additional application windows and responsive/state
+  variants may be added and removed.
 - **Name / Text / Stroke / Fill / r** — with an element selected, the Name box
   renames it, the second box sets its **visible text** (e.g. a button label),
   and the two color pickers + `r` set stroke, fill, and corner roundness. Every
@@ -244,9 +298,10 @@ so the closer you zoom the more precise each placement is.
 
 ## Files
 
-- `server.py` — capture (`spectacle`) + save endpoints, static file serving.
+- `server.py` — automatic multi-tool screenshot capture, save endpoints, and static file serving.
 - `web/index.html`, `web/style.css`, `web/app.js` — the canvas app.
 - `run.sh` — launcher.
+
 Composite widgets can be created from any three or more selected elements with
 **◈ Make Widget**. The composite has its own outer fill, border and independent
 corner radii without rewriting child styles. Use **Enter** (or double-click) to
@@ -256,3 +311,9 @@ remove only the frame. Composite trees persist in JSON and nested XML.
 Dragging a widget from the Library or an existing item from the Elements tree
 onto the canvas now highlights the exact target container and paints the
 insertion line before the drop.
+
+## Versioning
+
+Feature releases increment the numeric version, for example `v0.0.1` →
+`v0.0.2`. Fix-only releases keep that feature number and append letters:
+`v0.0.2-a`, `v0.0.2-b`, … `v0.0.2-z`, then `v0.0.2-aa`, `v0.0.2-ab`, and so on.

@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.0.3 — 2026-07-15
+
+- Complete the layout-fidelity pass: optional section captions, main-axis
+  justification, text wrap/ellipsis/clip, nested hug sizing, and scrollable
+  overflow now agree across canvas, JSON, XML, and generated HTML.
+- Add responsive `hideBelow` / `showBelow` visibility and ship AppLocker regular
+  and compact design variants as an editable breakpoint-state proof.
+- Add opt-in sidebar hide/show and scroll interactions in the editor and exported
+  HTML without turning PixelRuller into a general application-logic engine.
+- Add editable composite widgets with independent outer frames, per-corner radii,
+  subtree clipping, enter/exit editing, scaling, ungrouping, and serialization.
+- Improve GTK and KDE defaults with documented button padding, consistent action
+  sizing, shorter labels, neutral switch handles, and guideline-aware AI rules.
+- Add semantic HTML export parity for toolkit controls, responsive container
+  queries, interaction metadata, and embedded assets.
+- Add command-first co-design through `tree`, `inspect`, `selection`, and
+  `ui hide|show|toggle`, including a full-canvas focus view.
+- Add a thread-safe localhost command queue and the installed
+  `pixelruller-command` client so an AI can edit the open canvas without simulated
+  mouse or keyboard input while the user watches changes live.
+- Add deterministic browser layout self-tests and server tests for the command
+  broker, while preserving the existing screenshot backend tests.
+
+## v0.0.2 — 2026-07-15
+
+- Add a responsive window-stage chooser: create an empty GTK/KDE window or
+  deep-copy an existing window and every nested widget at a new size.
+- Keep every application window and responsive/state variant visible together
+  on the canvas for practical comparison and resizing tests.
+- Round-trip `variantOf` and `variantLabel` through canonical JSON and XML.
+- Extend the design command bar with parameterized empty/copy window commands.
+- Ship a complete platform-neutral AI guide covering access, permissions,
+  commands, properties, widget catalogue, grouping, layout, official guideline
+  sources, and the exact GTK/KDE palettes.
+- Add `pixelruller --print-ai-skill` and `--ai-skill-path` for installed AI tools.
+- Add a simple transparent GTK-palette PixelRuller application icon.
+- Set the PDFExtractor proof-of-concept window to a safe 1000×700 minimum size.
+- Require AI co-design handoffs to include clickable artifact/download links.
+- Allow installation on systems without a packaged Spectacle; screenshot capture
+  remains optional while canvas/UI-design mode stays fully available.
+- Auto-detect common KDE, GNOME, MATE, XFCE, Wayland, and X11 screenshot tools,
+  fall back between them, and allow any custom capture command through an
+  environment-variable template.
+- Default screenshot capture to a 10-second countdown and recognize Kubuntu's
+  `kde-spectacle` package name in package suggestions.
+- Document feature-number/fix-letter versioning.
+
 ## v0.0.1 — 2026-07-15
 
 First public release of PixelRuller.
