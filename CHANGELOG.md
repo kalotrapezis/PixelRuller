@@ -15,6 +15,8 @@
 - Add a simple transparent GTK-palette PixelRuller application icon.
 - Set the PDFExtractor proof-of-concept window to a safe 1000×700 minimum size.
 - Require AI co-design handoffs to include clickable artifact/download links.
+- Allow installation on systems without a packaged Spectacle; screenshot capture
+  remains optional while canvas/UI-design mode stays fully available.
 - Document feature-number/fix-letter versioning.
 
 ## v0.0.1 — 2026-07-15

@@ -63,6 +63,10 @@ Then launch **PixelRuller** from the application menu or run `pixelruller` in a
 terminal. Build the package locally with `packaging/build-deb.sh`; the result is
 written to `dist/`.
 
+Spectacle is optional at package-install time. Canvas design, JSON loading, AI
+co-design, and code export work without it; only desktop screenshot capture
+requires Spectacle to be available in the graphical session.
+
 The package installs `/usr/bin/pixelruller`, so the command is system-wide after
 installation. Root is not required to run it. An AI needs browser-control access
 to operate the live editor, but can always print the complete platform-neutral
