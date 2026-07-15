@@ -26,11 +26,13 @@ install -m 0644 "$ROOT/Assets/pixelruller-icon.png" "$PKGROOT/usr/share/pixmaps/
 install -m 0644 "$ROOT/server.py" "$PKGROOT/opt/pixelruller/server.py"
 install -m 0644 "$ROOT/VERSION" "$PKGROOT/opt/pixelruller/VERSION"
 install -m 0644 "$ROOT/AI_SKILL.md" "$PKGROOT/opt/pixelruller/AI_SKILL.md"
+install -m 0644 "$ROOT/libraries.md" "$PKGROOT/opt/pixelruller/libraries.md"
 cp -a "$ROOT/web" "$PKGROOT/opt/pixelruller/web"
 cp -a "$ROOT/Assets" "$PKGROOT/opt/pixelruller/Assets"
 
 install -m 0644 "$ROOT/README.md" "$PKGROOT/usr/share/doc/pixelruller/README.md"
 install -m 0644 "$ROOT/AI_SKILL.md" "$PKGROOT/usr/share/doc/pixelruller/AI_SKILL.md"
+install -m 0644 "$ROOT/libraries.md" "$PKGROOT/usr/share/doc/pixelruller/libraries.md"
 install -m 0644 "$ROOT/CHANGELOG.md" "$PKGROOT/usr/share/doc/pixelruller/CHANGELOG.md"
 install -m 0644 "$ROOT/LICENSE" "$PKGROOT/usr/share/doc/pixelruller/copyright"
 

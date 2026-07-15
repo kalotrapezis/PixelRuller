@@ -33,7 +33,7 @@ WEB_DIR = os.path.join(ROOT, "web")
 ASSETS_DIR = os.path.join(ROOT, "Assets")
 SAVE_SUBDIR = "PixelRuller"
 APP_NAME = "PixelRuller"
-APP_VERSION = "0.0.3"
+APP_VERSION = "0.0.4"
 AI_SKILL_PATH = os.path.join(ROOT, "AI_SKILL.md")
 
 
