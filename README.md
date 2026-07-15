@@ -4,7 +4,7 @@
 
 AI collaborators should read [`AI_SKILL.md`](AI_SKILL.md) before creating, editing, or implementing a PixelRuller UI design.
 
-Current release: **v0.0.3**
+Current release: **v0.0.4**
 
 A pixel-measuring tool for counting screen distances, positions, and areas.
 It grabs a full screenshot, overlays a ruler grid, and lets you drop points or
@@ -46,6 +46,16 @@ hit-testing, and container-query rules in generated HTML. Its navigation also
 demonstrates opt-in UI interaction: the sidebar names **Back** as its toggle
 control, while the content area enables wheel scrolling.
 
+### Toolkit-aware switch colors
+
+PixelRuller's AI guide models switches with three independent theme roles: a
+neutral thumb, a neutral off track, and an accent/highlight on track. The track
+communicates state; the thumb never inherits the state color. GTK/GNOME and
+KDE/Breeze retain their own native dark-theme, border, opacity, and
+high-contrast behavior instead of sharing hardcoded black/white values. See
+[`AI_SKILL.md`](AI_SKILL.md) and [`libraries.md`](libraries.md) for the exact
+rules and primary toolkit sources.
+
 ## Run
 
 ```bash
@@ -61,10 +71,10 @@ Check the installed or source version with:
 
 ## Install the Debian package
 
-Download `pixelruller_0.0.3_all.deb` from the GitHub release and install it with:
+Download `pixelruller_0.0.4_all.deb` from the GitHub release and install it with:
 
 ```bash
-sudo apt install ./pixelruller_0.0.3_all.deb
+sudo apt install ./pixelruller_0.0.4_all.deb
 ```
 
 Then launch **PixelRuller** from the application menu or run `pixelruller` in a
