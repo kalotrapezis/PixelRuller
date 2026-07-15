@@ -80,15 +80,22 @@ Each entry: **w×h**, inner **padding**, outer **margin**, **radius**, plus note
 - Keep neighboring action buttons equal in height and preferably equal in width.
 - Use a nearby title/subtitle for context, for example `3 enrolled faces` plus
   an `Edit Faces` button instead of a long sentence inside the button.
-- Render switch handles with a theme-derived neutral foreground/handle color.
-  Black is not a universal GTK or KDE switch-knob token. Keep the track accent
-  distinct from the handle and retain high-contrast compatibility.
+- Model switches with three theme roles: a neutral thumb, a neutral off track,
+  and an accent/highlight on track. Never give the thumb the track's state
+  color; the track communicates the state.
+- GTK/GNOME light uses a white thumb in both states, a neutral-gray off track,
+  and the accent color for the on track. Use native theme tokens for dark and
+  high-contrast modes; GNOME's official dark example keeps the thumb light.
+- KDE/Breeze uses `Kirigami.Theme.backgroundColor` for the handle, a roughly
+  90:10 background/text blend for the inactive track, and
+  `Kirigami.Theme.highlightColor` for the checked track and border.
 - Use switches for immediately applied settings and checkboxes for settings that
   are committed later with Apply/OK.
 
 ## Sources
 
 - [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
+- [GNOME HIG — Switches](https://developer.gnome.org/hig/patterns/controls/switches.html)
 - [GNOME HIG — Buttons](https://developer.gnome.org/hig/patterns/controls/buttons.html)
 - [Libadwaita styles and high contrast](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/styles-and-appearance.html)
 - [GNOME HIG — Layout (Wiki archive)](https://wiki.gnome.org/Design/HIG/Planning/Layout) — 12 px window margin, 12 px label↔control
@@ -98,3 +105,4 @@ Each entry: **w×h**, inner **padding**, outer **margin**, **radius**, plus note
 - [KDE HIG — Units & Measurements](https://develop.kde.org/hig/layout/units.html)
 - [Kirigami Units (smallSpacing 4 / large 8)](https://invent.kde.org/frameworks/kirigami/-/merge_requests/479)
 - [Kirigami::Units class reference](https://api.kde.org/kirigami-platform-units.html)
+- [KDE Breeze `SwitchIndicator.qml`](https://invent.kde.org/frameworks/qqc2-desktop-style/-/blob/master/org.kde.desktop/private/SwitchIndicator.qml)

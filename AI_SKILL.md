@@ -255,9 +255,16 @@ Treat these as build constraints:
   explanation in a nearby title/subtitle rather than squeezing it into a button.
 - Use a switch for immediate settings and a checkbox when changes wait for an
   Apply/OK action. Do not use a switch as a decorative status marker.
-- Use the theme's neutral/foreground handle color for switches. Do not hardcode
-  a black or white knob as a universal GTK/KDE rule; preserve theme and
-  high-contrast compatibility.
+- Treat every switch as three theme roles: a neutral **thumb**, a neutral
+  **off track**, and an accent/highlight **on track**. The thumb never takes
+  the track's state color; the track communicates off versus on.
+- For GTK/GNOME, follow the native switch/theme tokens. The official light
+  example uses a white thumb in both states, a neutral-gray off track, and the
+  accent color for the on track. Dark values are toolkit-derived rather than a
+  mechanical inversion; the official dark example uses a light thumb.
+- For KDE/Breeze, use `Kirigami.Theme.backgroundColor` for the handle, a neutral
+  background/text blend for the off track, and `Kirigami.Theme.highlightColor`
+  for the checked track/border. Preserve native high-contrast behavior.
 - Use theme roles and toolkit widgets instead of custom hardcoded colors whenever
   the final implementation supports them.
 
@@ -284,6 +291,7 @@ accent hover/highlight, success, warning, error.
 Sources:
 
 - GNOME Human Interface Guidelines: https://developer.gnome.org/hig/
+- GNOME switches: https://developer.gnome.org/hig/patterns/controls/switches.html
 - GNOME buttons: https://developer.gnome.org/hig/patterns/controls/buttons.html
 - Libadwaita styles and high contrast: https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/styles-and-appearance.html
 - GNOME layout archive: https://wiki.gnome.org/Design/HIG/Planning/Layout
@@ -292,6 +300,7 @@ Sources:
 - KDE layout and navigation: https://develop.kde.org/hig/layout_and_nav/
 - KDE units and measurements: https://develop.kde.org/hig/layout/units.html
 - Kirigami Units reference: https://api.kde.org/kirigami-platform-units.html
+- KDE Breeze switch indicator: https://invent.kde.org/frameworks/qqc2-desktop-style/-/blob/master/org.kde.desktop/private/SwitchIndicator.qml
 
 See `libraries.md` in the project for the full derived widget metrics and source
 notes.

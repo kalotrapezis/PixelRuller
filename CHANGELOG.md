@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.4 — 2026-07-15
+
+- Define switches as three independent theme roles: neutral thumb, neutral off
+  track, and accent/highlight on track; the track communicates state.
+- Document the GTK/GNOME light behavior and require native toolkit tokens for
+  dark and high-contrast appearances instead of mechanically inverted colors.
+- Document KDE/Breeze's background-color handle, neutral inactive blend, and
+  highlight-colored checked track/border from its current switch implementation.
+- Add direct GNOME switch and KDE Breeze implementation references to the
+  packaged AI guide and detailed widget-library guidance.
+- Include `libraries.md` in the Debian package so the README and AI guide's
+  detailed toolkit reference remains available after installation.
+
 ## v0.0.3 — 2026-07-15
 
 - Complete the layout-fidelity pass: optional section captions, main-axis
