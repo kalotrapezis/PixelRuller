@@ -92,6 +92,18 @@ widget takes a `src` that letterboxes inside its frame. Both accept built-in
 immediately, and the editor's "📂 Choose an asset…" picker uploads through
 `POST /assets/upload` (name collisions get a `_2` suffix automatically).
 
+**Use the provided SVGs first, and match their style when you add your own.**
+List the built-in set (`assets [filter]` / `GET /assets`) before inventing an
+icon — it is broad (arrows, chevrons, gear, search, files, lock/unlock, face-id,
+media, brush, trash, warning, users, …). When a needed icon genuinely isn't
+there, **author a new SVG in the same house style** rather than pasting a
+mismatched third-party icon or dropping an emoji where a line icon belongs:
+`viewBox="0 0 24 24"`, `fill:none`, a single stroke in `currentColor` (so it
+follows the theme), `stroke-width="2"`, round `stroke-linecap`/`stroke-linejoin`.
+Drop it into `~Pictures/PixelRuller/assets/` and reference it as `user/<file>`.
+Keep every icon in the UI one coherent family — consistent weight, rounding, and
+metaphor.
+
 ## Hierarchy and grouping
 
 - `window` is a root container. At least one root must remain.
@@ -431,6 +443,103 @@ a blue drop-zone. The generated GTK 4 code emits **no** blues: the buttons get
 `.suggested-action`, the progress bar is left unstyled, and the drop-zone's dashed
 border and label use `@theme_selected_bg_color`. Switching the desktop theme from
 blue to pink recolours the whole app with zero code changes.
+
+### Native layout & UX patterns (design cues)
+
+Colour is only half of "follow the platform". A GTK/GNOME target is also expected
+to reproduce these layout conventions — the AppLocker and GNOME Settings example
+designs are the reference. Don't emit a flat wall of controls.
+
+- **Gear before a switch = per-row settings.** When a switch/toggle governs
+  something that has its own further settings, place a round **flat gear
+  toolbutton** (⚙, icon-only, no fill, no border) immediately **before** the
+  switch. It opens the detail dialog/subpage for exactly the thing that switch
+  controls, and keeps every switch aligned at the row's trailing edge. Do **not**
+  add a separate `Edit…` text button for this — the gear *is* the affordance.
+  (Maps to a flat `GtkButton` with an icon, or an `Adw.ActionRow` with a gear
+  suffix plus the switch. KDE: a flat configure-icon `Button` before the `Switch`.)
+- **Bordered section cards.** Group related rows inside a bordered section — the
+  GNOME boxed list (`.boxed-list`) or `.card`: one rounded outer border with
+  **bottom-only** 1px dividers between rows (`borderSides` bottom only). Never
+  leave controls floating on the bare window background. (KDE: a `Kirigami.Card`
+  or `Kirigami.FormLayout` with a visible boundary.)
+- **Titles and subtitles explain the UI.** Every section carries a heading
+  **title** and a **subtitle/description**, and each row can carry its own title
+  plus a dim subtitle. The UI/UX explanation lives in these
+  (`.heading` / `.title-*` / `.dim-label`, or an `Adw.PreferencesGroup`
+  title+description) — never crammed into a control's label. This is what makes
+  the interface self-explaining.
+- **Row layout.** A settings row reads left→right: leading title (+ optional dim
+  subtitle), a growing spacer, then the trailing control cluster (optional gear,
+  then the switch/value/chevron), right-aligned and consistent across rows.
+- **Sidebar + page stack, not tabs.** Separate top-level content into logical
+  sections with a **sidebar** — a vertical list of destinations — driving a page
+  **stack**, not a tab bar. Each sidebar item's `action: switch` + `target` shows
+  its page and hides the siblings (one `section` per page in a "Page stack").
+  Pin low-priority items (version, About) to the bottom of the sidebar with a
+  growing **spacer** above them. Maps to `Adw.NavigationSplitView` /
+  `GtkStackSidebar` + `GtkStack` (KDE: `Kirigami.PageRow` / `GlobalDrawer`).
+  Reserve **tabs** for peer documents/views *within* a page, never for the app's
+  top-level sections.
+- **Commit action bar.** A screen that batches changes behind Apply/OK gets a
+  bottom action bar: a growing spacer pushes buttons to the trailing edge, a
+  secondary/destructive button (Revert/Cancel) left of the primary (Apply);
+  equal heights, `.suggested-action` on the primary, `.destructive-action` where
+  the action discards work.
+- **Modal dialogs, not windows.** A task that must be finished or dismissed
+  before continuing (enroll, rename, enter a PIN, confirm) is a **modal dialog**
+  that dims/darkens the parent behind a **scrim** — not a separate top-level
+  window, not an inline panel. The dimmed backdrop signals "finish this or close
+  it." Title + body + a bottom action bar (Cancel leading, primary trailing).
+  Maps to `Adw.Dialog` / `Adw.MessageDialog` (or a modal `GtkWindow` set
+  `transient-for`); KDE `Kirigami.Dialog`. In a *mockup* these appear as separate
+  window shapes only because the canvas has no overlay layer — implement them as
+  a modal over the parent.
+- **Responsive variants.** Ship compact + regular variants of a screen. On narrow
+  widths the sidebar folds from a permanent column into a toggle/drawer and rows
+  reflow — nothing is clipped. Use `hideBelow`/`showBelow` to express what swaps
+  at a breakpoint; maps to Adw breakpoints / `Adw.OverlaySplitView`.
+- **Header back-navigation.** Drilling into a **subpage** adds a Back button at
+  the leading edge of the header bar to pop to the parent (`Adw.NavigationView`
+  push/pop). Sidebar = lateral top-level moves; header Back = depth within a
+  section.
+- **Colour as status/type.** Colour-code list rows by type or state so the
+  category reads at a glance — the PDFExtractor design tints file rows by
+  processing state: ready/fast = a translucent **success**-green tint (fill +
+  border + text, same hue) with a ⚡ glyph, needs-OCR/slow = a **warning**-amber
+  tint with a 🐌 glyph. Keep tint/border/text in one hue family, draw from
+  success/warning/error as a translucent tint (α≈0.12–0.16) so it survives dark
+  mode, and **always pair colour with a glyph and text — never colour alone**
+  (colour-blind readers). Maps to a `.card` row with a per-state class tinting
+  `@success_color`/`@warning_color`/`@error_color`.
+- **Content + inspector split.** A work area plus its options is a horizontal
+  split: primary content pane leading (~65%), a narrower settings/inspector pane
+  trailing (~35%), each a white card. This is *not* navigation (that's the
+  sidebar) — it's content beside its settings. `Adw.OverlaySplitView` / `GtkPaned`.
+- **Drop zone with a fallback.** A drag target is an accent-tinted panel — accent
+  fill, accent (often dashed) border, accent instructional text — **plus** an
+  explicit "…or click Add files" button. Never drag-only; drag isn't discoverable
+  or accessible. Border/text via `@theme_selected_bg_color`.
+- **Clean surface hierarchy.** The clean look = a softly tinted workspace
+  background, white content cards raised on it with a soft 1px border and ~14px
+  radius, and roomy 20–28px padding with comfortable row gaps. Whitespace does
+  the work — don't pack controls edge-to-edge.
+- **Rounded corners follow a scale.** Not one radius everywhere — by role: window
+  ≈12, cards/sections ≈12–14, controls (buttons, textboxes, dropdowns) ≈8,
+  chips/list rows ≈6, progress bars & checkboxes ≈4, toggles/pills fully rounded
+  (`height/2`). KDE/Breeze is tighter (cards ≈4–6, controls ≈3–4). **Nesting
+  rule:** a child's radius is ≤ its container's (inset by ~the padding), so a
+  child never looks rounder than the card holding it; and reuse the *same* radius
+  for the *same* role across the UI. These are geometry-only `border-radius`
+  values — fine in custom CSS, chosen to sit with the theme's own rounding.
+- **Self-narrating microcopy.** The primary button states the concrete effect and
+  count ("Extract 3 PDFs"); a nearby status line gives readiness + estimate
+  ("Ready · estimated OCR time 18 minutes"); summaries pack facts with middot
+  separators ("3 files · 248 pages · 2 fast · 1 needs OCR"). Fill from real state.
+
+These cues ship **inside every exported design** as `aiTheme.<toolkit>.patterns`,
+so an AI handed only the JSON still reproduces them — no need to have read this
+guide first.
 
 ## Human and AI workflow
 

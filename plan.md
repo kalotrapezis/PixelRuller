@@ -94,6 +94,28 @@ growing Spacer widgets when the layout engine can express the intent directly.
   section is regenerated on export, so all existing designs gain it the next time
   they are saved from the app.
 
+- [x] **13. Design-cue pattern library in the template (2026-07-17):** expand
+  `AI_THEME_TEMPLATE` beyond colour into the native GNOME/KDE layout & UX
+  conventions the example designs use, so an AI reproduces them the first time.
+  Under `aiTheme.<toolkit>.patterns` (17 GTK cues + KDE parity): gear-before-switch
+  for per-row settings, bordered section cards, explanatory titles/subtitles, row
+  layout, sidebar+page-stack navigation (not tabs), commit action bar, modal
+  dialogs with a scrim (not windows), responsive compact/regular variants, header
+  back-navigation, colour-as-status tinting (success/warning/error + glyph + text,
+  never colour alone), content+inspector split, drop zone with a click fallback,
+  clean surface hierarchy, a rounded-corner radius scale + nesting rule, and
+  self-narrating microcopy. Plus a top-level `icons` rule: use the provided SVGs
+  first, author new ones in the same 24×24 / `fill:none` / `currentColor` /
+  `stroke-width 2` house style. All mirrored in AI_SKILL.md; verified against the
+  38 in-app self-tests.
+
+- [x] **14. Back-fill the template into shipped designs (2026-07-17):** inject the
+  canonical `aiTheme` block into every packaged design JSON
+  (`AppLockerUI`, `GnomeSettingsUI`, `ElementRow`, `PDFExtractorUI`) as an
+  additions-only edit (no shape reflow), so the examples themselves carry the
+  cues on disk rather than only on the next re-export. Each round-trips through
+  `loadDesign`/`buildExport` with shapes preserved.
+
 ### Completion rule
 
 Each field must round-trip through JSON and XML, produce equivalent generated

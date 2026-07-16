@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.0.6 — 2026-07-17
+
+- Grow the embedded `aiTheme` template from a colour rule into a full design-cue
+  library: `aiTheme.<toolkit>.patterns` now carries 17 GTK cues (plus KDE
+  parity) distilled from the example designs — gear-before-switch per-row
+  settings, bordered section cards, explanatory titles/subtitles, sidebar +
+  page-stack navigation (not tabs), a commit action bar, modal dialogs with a
+  scrim (not windows), responsive compact/regular variants, header
+  back-navigation, colour-as-status tinting (success/warning/error paired with a
+  glyph and text, never colour alone), a content + inspector split, an accent
+  drop zone with a click fallback, a clean surface hierarchy, a rounded-corner
+  radius scale with a nesting rule, and self-narrating microcopy.
+- Add a top-level `icons` rule to the template: use the provided built-in SVGs
+  first, and author new ones in the same house style (24×24 viewBox, `fill:none`,
+  `currentColor` stroke, `stroke-width 2`, round caps/joins) when one is missing.
+- Back-fill the canonical `aiTheme` block into every packaged design
+  (`AppLockerUI`, `GnomeSettingsUI`, `ElementRow`, `PDFExtractorUI`) as an
+  additions-only edit, so the examples carry the cues on disk and round-trip with
+  their shapes unchanged.
+- Mirror the whole cue set in the packaged AI guide (AI_SKILL.md) so the skill
+  and the JSON each stand alone; verified against the in-app layout self-tests.
+
 ## v0.0.5 — 2026-07-16
 
 - Embed an `aiTheme` template in every exported design: instructions that tell an
