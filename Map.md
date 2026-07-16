@@ -16,7 +16,7 @@ The HTTP server captures the desktop via `spectacle`, manages file I/O, and brok
 | `save_dir()` | Return the PixelRuller subfolder in Pictures, creating it if needed. |
 | `capture_screenshot()` | Call `spectacle` with flags and return raw PNG bytes or raise. |
 | `unique_path(name, ext)` | Return a non-clobbering filename in PixelRuller folder by appending `_2`, `_3` etc. |
-| `CommandBroker` / `COMMAND_BROKER` | Thread-safe short-lived queue: enqueue a command, deliver it once to the open editor, store the shared `runCommand()` result for the CLI. |
+| `CommandBroker` / `COMMAND_BROKER` | Thread-safe short-lived queue: enqueue one command or a `commands` array, deliver each once to the open editor, store the shared `runCommand()` result for the CLI (`pixelruller-command -` batches stdin lines). |
 | `Handler.log_message()` | Suppress HTTP server log spam (empty override). |
 | `Handler._send(code, body, content_type)` | Send an HTTP response with headers and body. |
 | `Handler._read_json()` | Parse the request body as JSON (defaults to `{}`). |
@@ -27,7 +27,8 @@ The HTTP server captures the desktop via `spectacle`, manages file I/O, and brok
 | `Handler.handle_save_json()` | Accept JSON payload and name; write JSON file to disk. |
 | `Handler.handle_save_text()` | Accept text payload and name; write .txt (flow outline) to disk. |
 | `Handler.serve_static(base, rel)` | Serve a file from base dir with a path-traversal guard. |
-| `Handler.handle_assets_list()` | GET /assets → JSON list of `{name, src}` SVGs under Assets/SVGs. |
+| `user_assets_dir()` | Drop folder for the user's own PNG/SVG design assets (`~Pictures/PixelRuller/assets`), auto-created. |
+| `Handler.handle_assets_list()` | GET /assets → JSON list of `{name, src}`: built-in Assets/SVGs plus user assets as `user/<file>` (PNG/SVG/JPG/WebP). |
 | `main()` | Parse CLI args (--grid, --no-open, --port); start server; optionally open browser. |
 
 ---
@@ -86,9 +87,10 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `copyStyle()` / `pasteStyle()` | Style clipboard: copy the selected element's effective style keys, apply to the selection (🖌 buttons). |
 | `THEMES` / `buildPalette()` / `renderSwatches()` / `applyThemeToDesign()` | GTK/KDE light+dark palettes in the bottom bar; swatch click=fill, right-click=border; theme the whole design by widget role. |
 | `refreshTree()` | Rebuild the sidebar Elements tree (hierarchy by parent/slot + free elements): click=select, drag=re-parent/reorder (+z lift), ▲=bring to front. Called from relayout/selection changes. |
-| `runCommand(str)` / `execCommand(str)` | Shared mutation entry point and verb interpreter for the bottom bar and localhost CLI; includes design edits plus tree/list, inspect, selection, and command-focus UI control. |
+| `runCommand(str)` / `execCommand(str)` | Shared mutation entry point and verb interpreter for the bottom bar and localhost CLI; includes `new canvas`, `add … with <prop> <value>` pairs (validated, id/name returned as data), design edits plus multi-`select`/`select add`/`select none`, `group`, `front`/`back`, `cut`/`paste`, `style copy|apply`, `defaults`, tree/list, inspect, selection, and command-focus UI control. |
+| `applyToolkitDefaults(root, toolkit)` | Reapply documented toolkit metrics (fixed-axis sizes, radius, padding, gap) plus the registry's visual style to a widget subtree; keeps semantic text/name/state and Window dimensions. |
 | `commandShapeLine()` / `commandTree()` | Produce structured hierarchy output with selection, id/slot, geometry, colors, visibility, and layout mode. |
-| `setCommandFocus()` / `pollRemoteCommands()` | Hide/restore editor chrome and number overlays; poll the localhost broker and execute each remote command through `runCommand()`. |
+| `setCommandFocus()` / `pollRemoteCommands()` | Hide/restore editor chrome and number overlays; drain the whole localhost broker queue each poll tick through `runCommand()` so batched streams run at engine speed. |
 | `findShape(ref)` / `tokenize` / `parseVal` | Resolve an element by id / exact name / name prefix; split a command into quoted-aware tokens; string→number/bool coercion. |
 | `#cmdInput` / `#cmdHist` (IIFE) | Bottom-bar command input: Enter runs, ↑/↓ history recall, popup of past commands (click to reuse). |
 | `hugDimensions()` / `prepareLayoutSize()` | Compute deterministic natural widget/container size from text, descendants, padding, captions and gaps; apply wrapped-text hug + min/max constraints. |
@@ -264,3 +266,26 @@ Bash launcher script. Changes to the script directory and delegates all argument
 - Widget text alignment: `alignedText()` inside `drawWidget()` is the shared
   bounded H/V renderer for single-label widgets; `defaultTextAlign()` keeps the
   Properties fallback in sync with the actual renderer.
+- Borders & text styling: `borderSides4()` (per-side border enables),
+  `fontStyleCss()` (bold/italic canvas font prefix), `effectiveBg()` (nearest
+  visible ancestor fill, used by border-legend caption chips). Sections render
+  solid by default with `strokeStyle: dashed` opt-in, per-side border segments,
+  and `captionMode: border` legend captions (`captionSide`/`captionAlign`);
+  all round-trip JSON/XML and export to per-side CSS borders + `.sr-legend`.
+  Windows draw no painted fallback chrome — chrome is real child widgets.
+- Assets: `pickExternalAsset()` uploads a user-picked file through
+  `POST /assets/upload` and selects it; `refreshWidgetIconOptions()` builds the
+  grouped picker (Choose an asset… · Your assets · Built-in icons) shared by
+  button `icon` and Image `src`; the Image widget draws its `src` letterboxed
+  and radius-clipped; the `assets [filter]` command lists everything from CLI.
+  `showText: false` hides any widget's label + placeholder and overrides the
+  section caption; new sections default to no text/caption (use a Label).
+- UI actions & shadows: `performUiAction()` / `resolveInWindow()` run a
+  control's declarative `action` (`toggle|show|hide|switch`) on its `target`
+  inside the owning Window (`switch` hides sibling sections); exported as
+  `data-action`/`data-action-target` plus a click handler in the generated
+  HTML runtime. `shadow: true` draws a drop shadow in the shared `box()`
+  helper and exports as `box-shadow`; window presets enable it. Text widgets
+  support `bold`/`italic`/`fontFamily` end-to-end. New canvases start with
+  name overlays off; screenshot loads keep them on. `Assets/SVGs` gained
+  arrow-* and chevron-* icons for the button `icon` property.

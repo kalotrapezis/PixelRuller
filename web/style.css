@@ -387,10 +387,23 @@ body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
 .sb-head button { padding: 2px 8px; }
 .sb-body { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow-y: auto; }
 
-/* Tool groups relocated into the sidebar wrap as an icon-ish grid. */
-#toolsHost { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-#toolsHost .group { display: flex; flex-wrap: wrap; gap: 6px; }
-#toolsHost .group > .label { flex-basis: 100%; }
+/* Sidebar toolbox: even two-column grid, related actions grouped under
+   sublabels; buttons align instead of free-wrapping at odd widths. */
+#toolsHost { flex-direction: column; gap: 6px; }
+#toolsHost .group { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+#toolsHost .group > .label,
+#toolsHost .group > .sublabel { grid-column: 1 / -1; }
+#toolsHost .group > .sublabel { margin-top: 4px; }
+#toolsHost .group button { width: 100%; padding: 6px 4px; text-align: center; }
+#toolsHost .group button.span2 { grid-column: 1 / -1; }
+.sublabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+/* Sublabels only belong in the sidebar grid, not the top toolbar rows. */
+#toolbar .sublabel { display: none; }
 
 /* Elements tree: full hierarchy, visible even when z hides something. */
 .pp-sec-flush { padding: 0 0 4px !important; gap: 0 !important; }
@@ -428,6 +441,10 @@ body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
 .pp-side-grid .pp-side-lbl { font-size: 11px; color: var(--muted); width: 52px; flex: none; }
 .pp-side-grid label { flex: 1; min-width: 0; gap: 3px; }
 .pp-side-grid input[type="number"] { width: 100%; min-width: 0; padding: 3px 4px; }
+/* Checkbox pairs (border sides): keep each letter glued to ITS OWN box —
+   stretched labels drift a letter next to the neighbor's checkbox. */
+#ppBorderSidesRow label { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; justify-content: flex-start; }
+#ppBorderSidesRow { gap: 12px; }
 
 /* Theme palette (bottom bar) */
 .swatches { display: flex; gap: 4px; align-items: center; }

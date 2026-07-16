@@ -82,6 +82,18 @@ growing Spacer widgets when the layout engine can express the intent directly.
   runtime behavior for sidebar toggles and scroll containers. AppLocker uses a
   target-centric `Settings navigation → Back` binding in both variants.
 
+- [x] **12. Embedded AI theme template (2026-07-16):** every exported design
+  carries a top-level `aiTheme` block — template instructions that tell an AI to
+  translate the mockup's accent hexes into theme tokens/style classes (GTK
+  `.suggested-action`, `@theme_selected_bg_color`, KDE `Kirigami.Theme.*`) instead
+  of hardcoding colours, mirroring the "Theme-following colours" section of
+  AI_SKILL.md. `buildExport()` stamps the canonical `AI_THEME_TEMPLATE`; a design
+  that already carries its own `aiTheme` round-trips it (`loadDesign`), and `new
+  canvas` reverts to canonical. So the skill *and* the JSON alone each carry the
+  theming rule — an AI gets it right the first time from either source. The
+  section is regenerated on export, so all existing designs gain it the next time
+  they are saved from the app.
+
 ### Completion rule
 
 Each field must round-trip through JSON and XML, produce equivalent generated
@@ -271,7 +283,7 @@ growing spacer, Search field and Hamburger at the end.
   and may resize via handles but never moves/reparents/reorders; Move is the only
   layout-moving tool; Camera pans without design mutations. Space-drag and
   middle-drag are Camera shortcuts consumed before object hit-testing.
-- [ ] **NEXT — Command-first co-design parity:** make every normal build/edit
+- [x] **Command-first co-design parity (2026-07-15):** make every normal build/edit
   operation available through the same command engine so an AI can work without
   pointer-driven canvas manipulation while the user keeps a clear view of the
   application.
@@ -280,11 +292,17 @@ growing spacer, Search field and Hamburger at the end.
     and an accent-colored selected marker in the command log.
   - [x] Add `inspect <element>` for the complete editable property/state summary and
     `selection` for the current multi-selection.
-  - Audit parity for add/select/multi-select/move/resize/re-parent/reorder/group/
-    make-widget/enter/exit/ungroup/delete/copy/rename/arrange/theme and toolkit
-    defaults; add any missing command rather than requiring canvas gestures.
-  - Add `defaults <element|subtree> [gtk4|kde]` to reapply the documented toolkit
-    sizes, padding, gaps, radii, and theme roles without changing semantic text.
+  - [x] Audit parity (2026-07-15): added the missing verbs — `select` with
+    multiple references plus `select add` / `select none` (multi-select),
+    `group [name]` (Ctrl+G parity), `front` / `back` (z-order buttons),
+    `cut` / `paste` (clipboard parity) and `style copy <el>` /
+    `style apply [<el> …]` (🖌 buttons). Single-reference commands accept
+    unquoted multi-word names; lists need quotes.
+  - [x] `defaults <element> [gtk4|kde]` (2026-07-15): reapplies the documented
+    toolkit sizes (fixed axes only), radius, padding, gap and the registry's
+    visual style to the whole subtree via `applyToolkitDefaults()`; semantic
+    text, names and state stay untouched, and Window dimensions are preserved.
+    Toolkit defaults to the element's own, then the active Library toolkit.
   - [x] Expose a local command transport that invokes the exact in-app command engine
     without simulated mouse/keyboard input. Keep commands and results visible in
     history so human and AI share the same audit trail.
@@ -292,6 +310,135 @@ growing spacer, Search field and Hamburger at the end.
     and number overlays while preserving a full live canvas; Ctrl+Shift+U restores.
   - [x] Keep browser control only for opening/loading and final visual QA; it must not
     be the primary construction/editing interface.
+  - [x] **Bulk-build ergonomics (2026-07-15, GNOME Control Center proof):**
+    `new canvas <w> <h>` starts a design from the CLI; `add <kind> [into <c>]
+    with <prop> <value> …` creates a named, styled widget in one command (pairs
+    validated before creation, `name`/`slot` included); `add` returns the new
+    element's id/name as data; the editor drains the whole remote queue per
+    poll tick; `POST /api/commands` accepts a `commands` array and
+    `pixelruller-command -` batches stdin lines. Rebuilt gnome-control-center
+    (84 commands, 77 widgets) in under 2 s with command-only construction.
+    Engine fixes found by the proof: `add into` no longer routes through the
+    canvas-centre insert (a transient adopt/stretch pass permanently corrupted
+    geometry); windows with a Title bar anywhere in their subtree suppress the
+    painted fallback chrome and its 44 px reservation (split sidebar/content
+    headers work); a hug container follows its content instead of flooring at
+    the library's default widget size.
+  - Remaining for full co-design flow: `save`/`load` design commands and the
+    Phase 5b/5c `GET /design` + `POST /design` document endpoints, GNOME-style
+    row separators (horizontal `separator` orientation), and repeatable
+    collections for real list rows.
+
+### Active batch — CLI-complete visual fidelity (2026-07-15, from the GNOME proof)
+
+Goal: **the CLI can do anything, with ease** — an AI without live-canvas access
+(ChatGPT-style) must be able to construct the complete picture over commands
+alone. Every feature below mirrors real code and must round-trip JSON/XML,
+export to generated HTML, and be settable through commands. Ordered; tick as
+they land:
+
+- [x] **Remove the painted fallback window chrome (2026-07-15).** Windows draw
+  only their frame now; all chrome is real child widgets. `containerHeadOffset`
+  reserves nothing for windows and only reserves caption space for block-mode
+  section captions.
+- [x] **DONE (2026-07-15) — Borders that mirror CSS/toolkit frames.** `strokeStyle: solid|dashed`
+  (sections become solid by default — the dashed look was an editor artifact),
+  per-side enables `borderSides {t,r,b,l}` (GNOME row dividers = bottom-only
+  border, exports as `border-top/right/bottom/left`), and **caption-in-border**:
+  `captionMode: block|border` + `captionSide: top|bottom` + `captionAlign:
+  left|center|right` — a section title sitting on the border line, exported as
+  HTML `fieldset/legend`, mapping to GtkFrame / QGroupBox.
+  Complete end-to-end: canvas rendering, per-side `border-*` CSS + dashed
+  style + `.sr-legend` span in generated HTML, JSON/XML serialization,
+  command validation (`strokeStyle`/`captionMode`/`captionSide`/`captionAlign`
+  enums, `borderSides` and `borderSides.t/r/b/l` booleans with a dedicated
+  set-path branch), and selftests (28/28). Properties-panel controls for the
+  new fields remain a TODO — commands are the primary surface.
+- [x] **DONE (2026-07-15) — Button UI actions.** `action: none|toggle|show|hide|switch` + `target`
+  on Button/Tool button/Menu item: declarative UI-only behavior (sidebar
+  toggles, content-pane switching). `switch` shows the target and hides its
+  sibling sections. Works on canvas click and in exported HTML runtime; kept
+  out of application-logic territory. Supersedes the target-centric
+  `interactionControl` as the preferred authoring direction (old fields keep
+  loading).
+- [x] **DONE (2026-07-15) — Text styling:** `bold`, `italic`, `fontFamily` on
+  text-bearing widgets. Complete end-to-end: all six widget-text `g.font`
+  assignments use `fontStyleCss(s)` + `s.fontFamily`, generated HTML emits
+  `font-weight/style/family`, JSON/XML round-trip, `bold`/`italic` booleans and
+  `fontFamily` string validate in commands, selftests cover CSS + JSON + XML.
+  Properties-panel controls remain a TODO alongside the border fields.
+- [x] **DONE (2026-07-15) — Shadows:** `shadow` boolean on any boxed widget →
+  canvas drop shadow (window 26/8, others 10/3) + CSS `box-shadow`; new preset
+  windows enable it.
+- [x] **DONE (2026-07-15) — Name labels off by default in canvas mode** —
+  `newCanvas()` clears show-numbers (the checkbox re-enables); screenshot-mode
+  loads keep labels on since measuring is their purpose.
+- [x] **DONE (2026-07-15) — Arrow/chevron SVG assets:**
+  `arrow-left/right/up/down.svg` + `chevron-left/right/up/down.svg` added to
+  `Assets/SVGs`, consumable through the button `icon` property.
+- [x] **DONE (2026-07-15) — GNOME Control Center re-verified** via CLI only
+  (84 build + 54 refinement commands): bottom-border row dividers, bold
+  headings, chevron icon in the Configure row, shadowed window; canvas and
+  generated HTML both match the reference; 34/34 selftests; fixture updated
+  at `web/GnomeSettingsUI.json`.
+
+**Batch complete (2026-07-15).** Every item above landed and is covered by the
+34 browser selftests plus the CLI-rebuilt GNOME fixture. Follow-ups carried
+forward: `save`/`load` design commands + `GET/POST /design` endpoints,
+horizontal `separator` orientation, and repeatable collections.
+
+**Editor-UI pass (2026-07-15):** the sidebar toolbox is a two-column grid with
+sublabeled groups (Mode / Draw / Clipboard / Style / Structure / History);
+sublabels hide when the groups return to the top toolbar in screenshot mode.
+The Properties panel gained controls for every new field: Drop shadow
+(Appearance), border Style solid/dashed + per-side T/R/B/L checkboxes
+(Border, sections/windows), caption mode/side/align (Text, sections),
+Bold/Italic/Font family (Text), and Action + Target selects (Interaction,
+controls) — all live-wired through `syncPropPanel`/`applyPropPanel`.
+`runLayoutSelfTests` now repaints the real document after restoring state.
+Added `showText` (2026-07-15): a Show text checkbox in the Text section (and
+`set <el> showText false`) hides any widget's label **and** its placeholder
+fallback without deleting the stored text; suppressed on canvas, in hug
+measurement, and in generated HTML; JSON/XML round-trip; 38/38 selftests.
+The dashed selection highlight also moved 3 px outside element bounds in
+accent color, so solid/per-side element borders stay readable while selected.
+
+**Text-model cleanup (2026-07-15):** Show text off disables (greys) the whole
+Text category in Properties — element Name is unaffected — and now overrides
+the section caption too (`sectionCaptionVisible` checks `showText`, so the
+22 px strip also collapses). **Sections are pure layout containers by
+default:** new sections get empty text and `showCaption: false`; a section
+title is a Label child, or an explicitly enabled caption (block or
+border/legend mode). Old files with stored captions load unchanged. The
+border-Sides checkboxes keep each T/R/B/L letter glued to its own box.
+
+**Assets pipeline (2026-07-15):**
+- User drop folder `~Pictures/PixelRuller/assets/` (auto-created,
+  `user_assets_dir()`): PNG/SVG/JPG/WebP files appear in `GET /assets` as
+  `user/<file>` and serve from `/assets/user/…`.
+- The Image widget renders its `src` letterboxed inside its frame (radius
+  clipped) on canvas; `src` round-trips JSON/XML (`set <el> src user/x.png`).
+- The Properties Asset picker (shared by button icons and Image src) is
+  grouped: None · **📂 Choose an asset…** · separator · Your assets ·
+  Built-in icons. The picker uploads via `POST /assets/upload` (server copies
+  into the drop folder; filename collisions get `_2`/`_3` suffixes; non-image
+  types rejected); the list refreshes and the new asset is selected.
+- New `assets [filter]` command lists all assets from the command bar/CLI.
+
+Follow-ups: refresh the cached asset list when files are dropped into the
+folder while the editor is open (currently needs a Library reopen), and a
+Library "Your assets" group mirroring the Properties picker.
+
+**Parked design — anchored popovers (hamburger menus, 2026-07-15):** mirror
+GtkPopover/QMenu: the floating menu is a normal Section (children = Menu
+items) with a new `anchor: <control>` field instead of a layout slot. It does
+NOT occupy a slot in the anchor's container; each relayout computes its x/y
+from the anchor's position (default below the control, edge-aware), it draws
+in the Window's overlay layer (above all siblings), and starts
+`runtimeVisible: false`. The control opens it with the existing
+`action: toggle` + `target`. Export: HTML absolutely-positioned near the
+anchor with the existing click runtime; GtkBuilder → GtkPopover attached to
+the widget; Qt → QToolButton menu. `anchor` is the only new field needed.
 - [ ] **Composite widget grouping:** select three or more widgets and
   choose **Make Widget** to wrap them as one named composite (for example, all
   GNOME/KDE chrome pieces → `Window`). The composite behaves as one item for

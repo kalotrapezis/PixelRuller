@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.0.5 — 2026-07-16
+
+- Embed an `aiTheme` template in every exported design: instructions that tell an
+  AI to translate the mockup's accent hexes into theme tokens and style classes
+  (GTK `.suggested-action`, `@theme_selected_bg_color`, KDE `Kirigami.Theme.*`)
+  instead of hardcoding colours. `buildExport` stamps the canonical template; a
+  design carrying its own round-trips it, and `new canvas` reverts to canonical,
+  so the skill and the JSON each carry the theming rule.
+- Add a user asset drop folder (`~Pictures/PixelRuller/assets`, PNG/SVG/JPG/WebP)
+  served under `assets/user/`, an in-editor "📂 Choose an asset…" picker that
+  uploads through `POST /assets/upload` with automatic `_2` de-duplication, and
+  `user/<file>` references in the asset list and commands.
+- Add batch command construction: `pixelruller-command -` reads one command per
+  stdin line and `POST /api/commands` accepts a `commands` array, queued together
+  and executed at engine speed (~50/s) with one ✓/✗ result line per command.
+- Add visual-fidelity fields across canvas, JSON, XML and HTML export: dashed
+  strokes (`strokeStyle`), per-side borders (`borderSides.{t,r,b,l}`),
+  caption-in-border legends (`captionMode`/`captionSide`/`captionAlign`),
+  `bold`/`italic`/`fontFamily`, drop `shadow`, and a `showText` toggle that hides
+  a widget's label and placeholder without deleting the stored text.
+- Add a declarative `switch` action (plus `toggle`/`show`/`hide`) with a `target`:
+  `switch` reveals the target section and hides its siblings, on canvas clicks and
+  in the exported HTML runtime.
+- Add `defaults <element> [gtk4|kde]` to reapply documented toolkit metrics and
+  registry style to a subtree without touching text, names, state or window size,
+  and surface `ungroup` in the toolbox.
+- Rebuild the canvas-mode sidebar toolbox as an even two-column grid with related
+  actions grouped under Draw / Clipboard / Style / Structure / History sublabels.
+- Ship a GNOME switch gear icon pair and an arrow/chevron asset set, and add the
+  77-widget GNOME Control Center (`web/GnomeSettingsUI.json`) and element-row
+  example designs built entirely through the command grammar.
+- Document the full command grammar and stdin batch construction in the README.
+
 ## v0.0.4 — 2026-07-15
 
 - Define switches as three independent theme roles: neutral thumb, neutral off
