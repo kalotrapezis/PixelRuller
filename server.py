@@ -33,7 +33,7 @@ WEB_DIR = os.path.join(ROOT, "web")
 ASSETS_DIR = os.path.join(ROOT, "Assets")
 SAVE_SUBDIR = "PixelRuller"
 APP_NAME = "PixelRuller"
-APP_VERSION = "0.0.4"
+APP_VERSION = "0.0.5"
 AI_SKILL_PATH = os.path.join(ROOT, "AI_SKILL.md")
 
 
@@ -138,6 +138,13 @@ def pictures_dir():
 
 def save_dir():
     d = os.path.join(pictures_dir(), SAVE_SUBDIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def user_assets_dir():
+    """Drop folder for the user's own PNG/SVG design assets."""
+    d = os.path.join(save_dir(), "assets")
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -270,6 +277,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/assets":
             self.handle_assets_list()
             return
+        if path.startswith("/assets/user/"):
+            self.serve_static(user_assets_dir(), path[len("/assets/user/"):])
+            return
         if path.startswith("/assets/"):
             self.serve_static(ASSETS_DIR, path[len("/assets/"):])
             return
@@ -288,13 +298,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, fh.read(), CONTENT_TYPES.get(ext, "application/octet-stream"))
 
     def handle_assets_list(self):
-        # List asset files (currently SVGs) as {name, src} relative to Assets/.
+        # List built-in SVGs plus the user's own PNG/SVG drop folder
+        # (~Pictures/PixelRuller/assets), served under assets/user/.
         items = []
         svg_dir = os.path.join(ASSETS_DIR, "SVGs")
         if os.path.isdir(svg_dir):
             for fn in sorted(os.listdir(svg_dir)):
                 if fn.lower().endswith(".svg"):
                     items.append({"name": os.path.splitext(fn)[0], "src": "SVGs/" + fn})
+        for fn in sorted(os.listdir(user_assets_dir())):
+            if fn.lower().endswith((".svg", ".png", ".jpg", ".jpeg", ".webp")):
+                items.append({"name": os.path.splitext(fn)[0] + " (user)", "src": "user/" + fn})
         self._send(200, json.dumps({"icons": items}))
 
     def do_POST(self):
@@ -302,6 +316,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_command_enqueue()
         elif self.path == "/api/commands/result":
             self.handle_command_result()
+        elif self.path == "/assets/upload":
+            self.handle_asset_upload()
         elif self.path == "/capture":
             self.handle_capture()
         elif self.path == "/save":
@@ -315,7 +331,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_command_enqueue(self):
         try:
-            item_id = COMMAND_BROKER.enqueue(self._read_json().get("command"))
+            payload = self._read_json()
+            if isinstance(payload.get("commands"), list):
+                ids = [COMMAND_BROKER.enqueue(c) for c in payload["commands"]]
+                self._send(202, json.dumps({"ids": ids, "status": "queued"}))
+                return
+            item_id = COMMAND_BROKER.enqueue(payload.get("command"))
         except (ValueError, json.JSONDecodeError) as exc:
             self._send(400, json.dumps({"error": str(exc)}))
             return
@@ -341,6 +362,36 @@ class Handler(BaseHTTPRequestHandler):
             return
         data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
         self._send(200, json.dumps({"image": data_url, "backend": backend}))
+
+    ASSET_TYPES = {"image/png": ".png", "image/svg+xml": ".svg",
+                   "image/jpeg": ".jpg", "image/webp": ".webp"}
+
+    def handle_asset_upload(self):
+        """Copy a user-picked file into ~Pictures/PixelRuller/assets.
+
+        Name collisions get a _2/_3… suffix, so logo.png next to an existing
+        logo.png becomes logo_2.png — nothing is overwritten.
+        """
+        try:
+            payload = self._read_json()
+            header, _, b64 = str(payload.get("dataUrl", "")).partition(",")
+            ext = next((e for mime, e in self.ASSET_TYPES.items() if mime in header), None)
+            if not ext:
+                raise ValueError("expected a PNG, SVG, JPEG or WebP data URL")
+            raw = base64.b64decode(b64)
+            base = "".join(c for c in os.path.splitext(str(payload.get("name", "asset")))[0]
+                           if c.isalnum() or c in " _-").strip().replace(" ", "_") or "asset"
+            directory = user_assets_dir()
+            candidate = os.path.join(directory, base + ext)
+            i = 2
+            while os.path.exists(candidate):
+                candidate = os.path.join(directory, f"{base}_{i}{ext}")
+                i += 1
+            with open(candidate, "wb") as fh:
+                fh.write(raw)
+            self._send(200, json.dumps({"src": "user/" + os.path.basename(candidate)}))
+        except (KeyError, ValueError, json.JSONDecodeError, base64.binascii.Error) as exc:
+            self._send(400, json.dumps({"error": str(exc)}))
 
     def handle_save(self):
         try:

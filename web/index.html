@@ -23,11 +23,12 @@
       <span class="label">Mode</span>
       <button class="mode active only-shot" data-mode="point">Point</button>
       <button class="mode only-shot" data-mode="area">Area</button>
-      <button class="mode only-canvas" data-mode="rect">▭ Rect</button>
-      <button class="mode only-canvas" data-mode="ellipse">◯ Ellipse</button>
       <button class="mode" data-mode="select">☝ Select</button>
       <button class="mode only-canvas" data-mode="move">✋ Move</button>
-      <button class="mode only-canvas" data-mode="camera">📷 Camera</button>
+      <button class="mode only-canvas span2" data-mode="camera">📷 Camera</button>
+      <span class="sublabel only-canvas">Draw</span>
+      <button class="mode only-canvas" data-mode="rect">▭ Rect</button>
+      <button class="mode only-canvas" data-mode="ellipse">◯ Ellipse</button>
     </div>
 
     <div class="group only-shot" role="radiogroup" aria-label="Snap">
@@ -63,17 +64,21 @@
     <div class="group" id="actionGroup">
       <button id="finish" class="only-shot" title="Close/finish the current area (Enter)">✓ Finish</button>
       <button id="equalize" class="only-shot" title="Make all segments of the selected area the same length">≡ Equalize</button>
+      <span class="sublabel only-canvas">Clipboard</span>
       <button id="copyBtn" class="only-canvas" title="Copy (Ctrl+C)">⧉ Copy</button>
       <button id="cutBtn" class="only-canvas" title="Cut (Ctrl+X)">✂ Cut</button>
       <button id="pasteBtn" class="only-canvas" title="Paste (Ctrl+V)">📋 Paste</button>
       <button id="deleteBtn" class="only-canvas" title="Delete selected (Del)">🗑 Delete</button>
+      <span class="sublabel only-canvas">Style</span>
       <button id="copyStyleBtn" class="only-canvas" title="Copy the selected element's style/properties">🖌 Style</button>
       <button id="pasteStyleBtn" class="only-canvas" title="Apply the copied style to the selection">🖌 Apply</button>
+      <span class="sublabel only-canvas">Structure</span>
       <button id="groupBtn" class="only-canvas" title="Group selection (Ctrl+G)">▣ Group</button>
-      <button id="makeWidgetBtn" class="only-canvas" title="Wrap 3+ selected elements as one editable composite">◈ Make Widget</button>
+      <button id="ungroupBtn" class="only-canvas" title="Ungroup section (Ctrl+Shift+G)">▢ Ungroup</button>
+      <button id="makeWidgetBtn" class="only-canvas span2" title="Wrap 3+ selected elements as one editable composite">◈ Make Widget</button>
       <button id="enterWidgetBtn" class="only-canvas" title="Edit the selected composite's children">Enter</button>
       <button id="exitWidgetBtn" class="only-canvas" title="Leave composite editing">Exit</button>
-      <button id="ungroupBtn" class="only-canvas" title="Ungroup section (Ctrl+Shift+G)">▢ Ungroup</button>
+      <span class="sublabel only-canvas">History</span>
       <button id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
       <button id="clear" title="Remove everything">🧹 Clear</button>
     </div>
@@ -293,6 +298,7 @@
           <label class="pp-full">Fill <input id="ppFill" type="color"><button class="pp-copy" data-copy="ppFill" title="Copy color" tabindex="-1">⧉</button></label>
           <label class="pp-slider">Radius <input id="ppRadius" type="range" min="0" max="200" step="1"><span id="ppRadiusv" class="pp-val">0</span></label>
           <label class="pp-slider">Opacity <input id="ppOpacity" type="range" min="0" max="100" step="1"><span id="ppOpacityv" class="pp-val">100</span></label>
+          <label class="pp-check"><input id="ppShadow" type="checkbox"> Drop shadow</label>
         </div>
       </section>
       <section class="pp-sec" id="ppCompositeSec" hidden>
@@ -319,6 +325,16 @@
           <label class="pp-full">Color <input id="ppStroke" type="color"><button class="pp-copy" data-copy="ppStroke" title="Copy color" tabindex="-1">⧉</button></label>
           <label class="pp-slider">Width <input id="ppStrokeW" type="range" min="0" max="20" step="1"><span id="ppStrokeWv" class="pp-val">1</span></label>
           <label class="pp-slider">Opacity <input id="ppStrokeO" type="range" min="0" max="100" step="1"><span id="ppStrokeOv" class="pp-val">100</span></label>
+          <label>Style
+            <select id="ppStrokeStyle"><option value="solid">solid</option><option value="dashed">dashed</option></select>
+          </label>
+          <div class="pp-side-grid" id="ppBorderSidesRow" hidden>
+            <span class="pp-side-lbl">Sides</span>
+            <label class="pp-check">T <input id="ppBorderT" type="checkbox" checked></label>
+            <label class="pp-check">R <input id="ppBorderR" type="checkbox" checked></label>
+            <label class="pp-check">B <input id="ppBorderB" type="checkbox" checked></label>
+            <label class="pp-check">L <input id="ppBorderL" type="checkbox" checked></label>
+          </div>
         </div>
       </section>
       <section class="pp-sec">
@@ -343,9 +359,28 @@
       <section class="pp-sec">
         <div class="pp-sec-head">Text <span class="pp-caret">▾</span></div>
         <div class="pp-sec-body">
+          <label class="pp-check"><input id="ppShowText" type="checkbox" checked> Show text</label>
           <label class="pp-full">Text <input id="ppText" type="text"></label>
           <label class="pp-check" id="ppCaptionRow" hidden><input id="ppShowCaption" type="checkbox"> Show section caption</label>
+          <div id="ppCaptionOpts" hidden>
+            <label>Caption
+              <select id="ppCaptionMode"><option value="block">above content</option><option value="border">on the border</option></select>
+            </label>
+            <div class="pp-row">
+              <label>Side
+                <select id="ppCaptionSide"><option value="top">top</option><option value="bottom">bottom</option></select>
+              </label>
+              <label>Align
+                <select id="ppCaptionAlign"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+              </label>
+            </div>
+          </div>
           <label class="pp-slider">Font <input id="ppFont" type="range" min="6" max="96" step="1"><span id="ppFontv" class="pp-val">14</span></label>
+          <div class="pp-row">
+            <label class="pp-check"><input id="ppBold" type="checkbox"> Bold</label>
+            <label class="pp-check"><input id="ppItalic" type="checkbox"> Italic</label>
+          </div>
+          <label class="pp-full">Font family <input id="ppFontFamily" type="text" placeholder="system-ui (default)"></label>
           <div class="pp-row">
             <label>Align H
               <select id="ppAlignH"><option value="left">left</option><option value="center" selected>center</option><option value="right">right</option></select>
@@ -392,6 +427,21 @@
       <section class="pp-sec" id="ppInteractionSec" hidden>
         <div class="pp-sec-head">Interaction <span class="pp-caret">▾</span></div>
         <div class="pp-sec-body">
+          <div id="ppActionRows" hidden>
+            <label>Action
+              <select id="ppAction">
+                <option value="none">none</option>
+                <option value="toggle">toggle target</option>
+                <option value="show">show target</option>
+                <option value="hide">hide target</option>
+                <option value="switch">switch to section</option>
+              </select>
+            </label>
+            <label class="pp-full">Target
+              <input id="ppActionTarget" type="text" list="ppTargetOptions" placeholder="element name or id">
+            </label>
+            <div class="pp-note">Switch shows the target section and hides its sibling sections — UI-only behavior, in canvas and exported HTML.</div>
+          </div>
           <label class="pp-check"><input id="ppInteractionEnabled" type="checkbox"> Enable interaction</label>
           <label class="pp-full" id="ppToggleTargetRow">Toggle element
             <input id="ppToggleTarget" type="text" list="ppTargetOptions" placeholder="element name or id">

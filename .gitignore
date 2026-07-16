@@ -4,3 +4,6 @@ __pycache__/
 dist/
 packaging/build/
 *~
+
+# Local-only native reference apps, never published.
+NativeAppsExamples_Dont pshThisToGITHUB/

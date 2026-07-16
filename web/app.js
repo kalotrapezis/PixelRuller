@@ -6,6 +6,7 @@ const state = {
   docMode: "screenshot", // "screenshot" (measuring) | "canvas" (designing)
   background: null,     // HTMLImageElement screenshot, or null for a blank canvas
   bgColor: "#ffffff",   // fill color when there is no background image
+  aiTheme: null,        // AI code-gen theme template carried by a loaded design (null = stamp canonical on export)
   drag: null,           // active pointer drag: {kind:'create'|'move'|'resize', ...}
   W: 0, H: 0,           // canvas size in true pixels
   view: { scale: 1, ox: 0, oy: 0 }, // screen = image * scale + offset
@@ -381,7 +382,7 @@ function drawTextBox(g, tf, s, text, bounds, defaults = {}) {
   g.save();
   g.beginPath(); g.rect(bounds.x, bounds.y, bounds.w, bounds.h); g.clip();
   g.fillStyle = defaults.color || s.textColor || "#111827";
-  g.font = `${fs}px system-ui, sans-serif`;
+  g.font = `${fontStyleCss(s)}${fs}px ${s.fontFamily || "system-ui, sans-serif"}`;
   g.textAlign = ah;
   g.textBaseline = "top";
   let lines = textLines(g, text, innerW, mode);
@@ -562,7 +563,11 @@ function drawWidget(g, tf, s, p, w, h, showText) {
   const fs = Math.max(7, (s.fontSize || 14) * tf.scale);
   // Text placed anywhere in a supplied box per Align H/V. Specialized controls
   // can reserve space for indicators/icons while sharing the same alignment.
+  // Show text is a per-widget toggle: off suppresses the label AND the
+  // widget's placeholder fallback (e.g. "Button") without deleting the text.
+  const textOff = s.showText === false;
   const alignedText = (str, color, defAlign, bounds = null, defAlignV = "middle") => {
+    if (textOff) return;
     const b = bounds || { x: p.x, y: p.y, w, h };
     drawTextBox(g, tf, s, str, b, { h: defAlign || "center", v: defAlignV, color });
   };
@@ -576,7 +581,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
     const size = Math.min(rawSize, Math.max(1, w - 8 * tf.scale), Math.max(1, h - 8 * tf.scale));
     const gap = Math.max(0, Number(s.iconGap) || 6) * tf.scale;
     const pos = s.iconPosition || (s.widget === "toolbutton" ? "only" : "left");
-    const hasText = pos !== "only" && !!str;
+    const hasText = pos !== "only" && !!str && !textOff;
     let ix = cx - size / 2, iy = cy - size / 2;
     let tx = cx, ty = cy, align = "center";
     if (hasText && pos === "left") {
@@ -593,13 +598,24 @@ function drawWidget(g, tf, s, p, w, h, showText) {
     }
     if (hasText) {
       g.fillStyle = color || s.textColor || "#111827";
-      g.font = `${fs}px system-ui, sans-serif`; g.textAlign = align; g.textBaseline = "middle";
+      g.font = `${fontStyleCss(s)}${fs}px ${s.fontFamily || "system-ui, sans-serif"}`; g.textAlign = align; g.textBaseline = "middle";
       g.fillText(str, tx, ty);
     }
   };
+  let shadowDrawn = false; // one shadow per widget, on its first filled box
   const box = (x, y, bw, bh, r, fill, stroke) => {
     g.beginPath(); roundRect(g, x, y, bw, bh, Math.min(r * tf.scale, bw / 2, bh / 2));
-    if (fill && fill !== "none") { g.fillStyle = fill; g.fill(); }
+    if (fill && fill !== "none") {
+      if (s.shadow && !shadowDrawn) {
+        shadowDrawn = true;
+        g.save();
+        g.shadowColor = "rgba(0,0,0,0.28)";
+        g.shadowBlur = (s.widget === "window" ? 26 : 10) * tf.scale;
+        g.shadowOffsetY = (s.widget === "window" ? 8 : 3) * tf.scale;
+        g.fillStyle = fill; g.fill();
+        g.restore();
+      } else { g.fillStyle = fill; g.fill(); }
+    }
     if ((s.strokeWidth || 0) > 0 && stroke) { g.strokeStyle = strokeColor(s, stroke); g.lineWidth = (s.strokeWidth || 1) * tf.scale; g.stroke(); }
   };
 
@@ -656,48 +672,51 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       g.strokeStyle = "#ffffff"; g.lineWidth = Math.max(1, 1.5 * tf.scale); g.stroke();
       break;
     }
-    case "window": {
-      const tk = s.toolkit === "kde" ? "kde" : "gtk4";
+    case "window":
+      // Windows are plain framed containers; all chrome (Title bar, controls,
+      // hamburger) is real child widgets from the toolkit presets.
       box(p.x, p.y, w, h, s.radius || 0, s.fill || "#ffffff", s.stroke);
-      // When the window owns an editable Title bar child, that widget draws the
-      // whole bar (title, buttons, tabs…) — skip the painted fallback chrome.
-      if (childrenOf(s).some(k => k.widget === "titlebar")) break;
-      const bar = Math.min(44 * tf.scale, h * 0.18);
-      // KDE: a real separate titlebar (solid strip + separator line, Breeze
-      // grey by default, own `barFill` property); GTK: integrated headerbar.
-      if (tk === "kde") {
-        g.save();
-        g.beginPath(); roundRect(g, p.x, p.y, w, h, Math.min((s.radius || 0) * tf.scale, w / 2, h / 2));
-        g.clip();
-        g.fillStyle = s.barFill || "#dae0e5";
-        g.fillRect(p.x, p.y, w, bar);
-        g.strokeStyle = strokeColor(s, s.stroke || "#bdc3c7");
-        g.lineWidth = Math.max(1, tf.scale);
-        g.beginPath(); g.moveTo(p.x, p.y + bar); g.lineTo(p.x + w, p.y + bar); g.stroke();
-        g.restore();
+      break;
+    case "section": {
+      const B = borderSides4(s);
+      const partial = !(B.t && B.r && B.b && B.l);
+      g.save();
+      if ((s.strokeStyle || "solid") === "dashed") g.setLineDash([5, 4]);
+      if (partial) {
+        box(p.x, p.y, w, h, s.radius || 0, s.fill, null);
+        if ((s.strokeWidth || 0) > 0 && s.stroke && s.stroke !== "none") {
+          g.strokeStyle = strokeColor(s, s.stroke); g.lineWidth = (s.strokeWidth || 1) * tf.scale;
+          const seg = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+          if (B.t) seg(p.x, p.y, p.x + w, p.y);
+          if (B.b) seg(p.x, p.y + h, p.x + w, p.y + h);
+          if (B.l) seg(p.x, p.y, p.x, p.y + h);
+          if (B.r) seg(p.x + w, p.y, p.x + w, p.y + h);
+        }
+      } else {
+        box(p.x, p.y, w, h, s.radius || 0, s.fill, s.stroke);
       }
-      const tc = s.textColor || "#111827";
-      const bcy = p.y + bar / 2;
-      alignedText(s.text || "Window", tc, tk === "gtk4" ? "center" : "left",
-        { x: p.x + 4 * tf.scale, y: p.y, w: Math.max(1, w - 8 * tf.scale), h: bar });
-      // Controls: hamburger + 3 window buttons, on buttonSide (default right).
-      const r = Math.max(3, Math.min(bar * 0.16, 9 * tf.scale));
-      const cd = r * 2, sp = r * 0.8, hbW = r * 2.2, pad = 14 * tf.scale;
-      const clusterW = hbW + sp * 3 + 3 * cd + 2 * sp;
-      const x0 = s.buttonSide === "left" ? p.x + pad : p.x + w - pad - clusterW;
-      g.strokeStyle = tc; g.lineWidth = Math.max(1.5, 2 * tf.scale); g.lineCap = "round";
-      for (const dy of [-r * 0.55, 0, r * 0.55]) { g.beginPath(); g.moveTo(x0, bcy + dy); g.lineTo(x0 + hbW, bcy + dy); g.stroke(); }
-      let cxx = x0 + hbW + sp * 3 + r;
-      for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(cxx, bcy, r, 0, Math.PI * 2); g.fillStyle = tc; g.fill(); cxx += cd + sp; }
+      g.restore();
+      if (sectionCaptionVisible(s)) {
+        if ((s.captionMode || "block") === "border") {
+          // Legend-style caption sitting on the border line (fieldset/GtkFrame).
+          const fsL = Math.max(8, (s.fontSize || 14) * tf.scale * 0.86);
+          g.font = `${fontStyleCss(s)}${fsL}px ${s.fontFamily || "system-ui, sans-serif"}`;
+          const tw = g.measureText(s.text).width + 12 * tf.scale;
+          const inset = 10 * tf.scale;
+          const ax = s.captionAlign || "left";
+          const lx = ax === "center" ? p.x + (w - tw) / 2 : ax === "right" ? p.x + w - inset - tw : p.x + inset;
+          const ly = (s.captionSide || "top") === "bottom" ? p.y + h : p.y;
+          g.fillStyle = effectiveBg(s);
+          g.fillRect(lx, ly - fsL * 0.8, tw, fsL * 1.6);
+          g.fillStyle = s.textColor || "#6b7280";
+          g.textAlign = "center"; g.textBaseline = "middle";
+          g.fillText(s.text, lx + tw / 2, ly);
+        } else {
+          alignedText(s.text, s.textColor || "#6b7280", "left", null, "top");
+        }
+      }
       break;
     }
-    case "section":
-      g.save(); g.setLineDash([5, 4]);
-      box(p.x, p.y, w, h, s.radius || 0, s.fill, s.stroke);
-      g.restore();
-      if (sectionCaptionVisible(s))
-        alignedText(s.text, s.textColor || "#6b7280", "left", null, "top");
-      break;
     case "radio": {
       const rr = Math.min(h, 18 * tf.scale) / 2;
       g.beginPath(); g.arc(p.x + rr, cy, rr, 0, Math.PI * 2);
@@ -724,6 +743,20 @@ function drawWidget(g, tf, s, p, w, h, showText) {
     }
     case "image": {
       box(p.x, p.y, w, h, s.radius || 0, s.fill || "#eef1f5", s.stroke);
+      // A chosen asset (built-in SVG or user PNG/SVG) renders inside the
+      // frame, letterboxed to preserve its aspect ratio.
+      if (s.src) {
+        const img = getIconImage(s.src);
+        if (img.complete && img.naturalWidth && !img._failed) {
+          const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+          const iw = img.naturalWidth * scale, ih = img.naturalHeight * scale;
+          g.save();
+          g.beginPath(); roundRect(g, p.x, p.y, w, h, Math.min((s.radius || 0) * tf.scale, w / 2, h / 2)); g.clip();
+          try { g.drawImage(img, p.x + (w - iw) / 2, p.y + (h - ih) / 2, iw, ih); } catch (e) { /* unsupported */ }
+          g.restore();
+          break;
+        }
+      }
       g.strokeStyle = s.textColor || "#9aa1ac"; g.fillStyle = s.textColor || "#9aa1ac";
       g.lineWidth = Math.max(1, 1.5 * tf.scale);
       g.beginPath(); g.arc(p.x + w * 0.32, p.y + h * 0.34, Math.max(3, Math.min(w, h) * 0.08), 0, Math.PI * 2); g.fill(); // sun
@@ -785,7 +818,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       g.textAlign = "center"; g.textBaseline = "middle";
       const labels = ["M", "T", "W", "T", "F", "S", "S"];
       const cellW = w / 7, cellH = (h - headerH) / 6;
-      g.fillStyle = s.textColor || "#111827"; g.font = `${Math.max(6, fs * 0.72)}px system-ui, sans-serif`;
+      g.fillStyle = s.textColor || "#111827"; g.font = `${fontStyleCss(s)}${Math.max(6, fs * 0.72)}px ${s.fontFamily || "system-ui, sans-serif"}`;
       labels.forEach((label, i) => g.fillText(label, p.x + cellW * (i + 0.5), p.y + headerH + cellH * 0.5));
       for (let day = 1; day <= 31; day++) {
         const pos = day + 1; // example month starts on Wednesday
@@ -799,7 +832,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       box(p.x, p.y, w, h, s.radius || 0, s.fill, s.stroke);
       if (childrenOf(s).length) break;
       const items = (s.text || "File Edit View Help").split(/\s*[|,]\s*|\s+/).filter(Boolean);
-      g.fillStyle = s.textColor || "#111827"; g.font = `${fs}px system-ui, sans-serif`;
+      g.fillStyle = s.textColor || "#111827"; g.font = `${fontStyleCss(s)}${fs}px ${s.fontFamily || "system-ui, sans-serif"}`;
       g.textAlign = "left"; g.textBaseline = "middle";
       let mx = p.x + 10 * tf.scale;
       for (const item of items) { g.fillText(item, mx, cy); mx += (g.measureText(item).width + 18 * tf.scale); }
@@ -853,7 +886,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
     case "breadcrumb": {
       box(p.x, p.y, w, h, s.radius || 0, s.fill, s.stroke);
       const parts = String(s.text || "Home / Documents / Project").split(/\s*\/\s*/).filter(Boolean);
-      g.font = `${fs}px system-ui, sans-serif`; g.textBaseline = "middle"; g.textAlign = "left";
+      g.font = `${fontStyleCss(s)}${fs}px ${s.fontFamily || "system-ui, sans-serif"}`; g.textBaseline = "middle"; g.textAlign = "left";
       let bx = p.x + 10 * tf.scale;
       parts.forEach((part, i) => {
         g.fillStyle = i === parts.length - 1 ? (s.textColor || "#111827") : "#6b7280";
@@ -903,7 +936,7 @@ function drawWidget(g, tf, s, p, w, h, showText) {
       const count = Math.max(1, Math.min(12, s.count != null ? s.count : 3));
       const active = Math.max(0, Math.min(count - 1, s.active || 0));
       const tabW = w / count;
-      g.font = `${fs}px system-ui, sans-serif`; g.textBaseline = "middle";
+      g.font = `${fontStyleCss(s)}${fs}px ${s.fontFamily || "system-ui, sans-serif"}`; g.textBaseline = "middle";
       for (let i = 0; i < count; i++) {
         const tx = p.x + i * tabW;
         const on = i === active;
@@ -1005,10 +1038,12 @@ function handleAtScreen(s, sx, sy) {
 // Dashed highlight (+ resize handles for elements) around the selected shape.
 function drawSelection(g, tf, s) {
   const bb = shapeBBox(s);
-  const pad = isElement(s) ? 0 : 8;
+  // Keep the dashed highlight off the element's own border: draw it a few
+  // screen pixels outside the bounds so solid/per-side borders stay readable.
+  const pad = isElement(s) ? 3 : 8;
   const a = toScreen(tf, bb.x, bb.y), b = toScreen(tf, bb.x + bb.w, bb.y + bb.h);
   g.save();
-  g.strokeStyle = "#ffffff";
+  g.strokeStyle = "#4a9eff";
   g.lineWidth = 1.5;
   g.setLineDash([6, 4]);
   if (isComposite(s)) { compositePath(g, tf, s); g.stroke(); }
@@ -1134,6 +1169,24 @@ function hexToRgba(hex, a) {
 }
 
 // Border color with the element's own border opacity applied.
+// Per-side border enables: true/absent = all four; object = per-side booleans.
+function borderSides4(s) {
+  const v = s.borderSides;
+  if (v == null || v === true) return { t: true, r: true, b: true, l: true };
+  if (v === false) return { t: false, r: false, b: false, l: false };
+  return { t: v.t !== false, r: v.r !== false, b: v.b !== false, l: v.l !== false };
+}
+
+// Canvas font prefix for bold/italic text styling.
+const fontStyleCss = (s) => `${s.italic ? "italic " : ""}${s.bold ? "700 " : ""}`;
+
+// Nearest visible background behind an element (for legend caption chips).
+function effectiveBg(s) {
+  for (let p = s; p; p = p.parent ? byId(p.parent) : null)
+    if (p.fill && p.fill !== "none") return p.fill;
+  return "#ffffff";
+}
+
 function strokeColor(s, c) {
   const a = s.strokeOpacity != null ? Math.max(0, Math.min(100, s.strokeOpacity)) / 100 : 1;
   return a >= 1 || !c || c[0] !== "#" ? c : hexToRgba(c, a);
@@ -1151,13 +1204,14 @@ const normalizeAlign = (v) => ({ left: "start", right: "end" }[v] ||
 const normalizeJustify = (v) => ["start", "center", "end", "space-between", "space-around", "space-evenly"].includes(v)
   ? v : "start";
 const sectionCaptionVisible = (s) => s?.widget === "section" &&
+  s.showText !== false && // Show text off overrides the caption too
   (s.showCaption != null ? !!s.showCaption : !!String(s.text || "").trim());
+// Windows reserve no painted-chrome strip — their Title bar is a real child.
+// Sections reserve caption space only for block captions above the content;
+// border captions (legend style) sit on the border line itself.
 const containerHeadOffset = (c) => {
-  if (c.widget === "window") {
-    const hasTitlebar = childrenOf(c).some(k => k.widget === "titlebar");
-    return hasTitlebar ? 0 : Math.min(44, c.h * 0.18);
-  }
-  return sectionCaptionVisible(c) ? 22 : 0;
+  if (c.widget === "window") return 0;
+  return sectionCaptionVisible(c) && (c.captionMode || "block") === "block" ? 22 : 0;
 };
 
 function render() {
@@ -1255,10 +1309,15 @@ function newCanvas(w, h) {
   state.W = Math.max(1, Math.round(w));
   state.H = Math.max(1, Math.round(h));
   state.shapes = [];
+  state.aiTheme = null; // fresh design → stamp the canonical template on export
   state.editComposite = null;
   clearSelection();
   state.building = null;
   state.mode = "select";
+  // Canvas mode identifies elements through the Elements tree / `tree`
+  // command; name overlays start off (the Show checkbox re-enables them).
+  state.showNumbers = false;
+  document.getElementById("showNumbers").checked = false;
   closeProps();
   applyModeUI();
   fitToView();
@@ -1613,6 +1672,7 @@ function insertWindowPreset(toolkit = libToolkit, options = {}) {
   win.h = Math.max(120, Number(options.h) || win.h);
   win.name = uniqueName(options.name || (toolkit === "kde" ? "KDE Window" : "GTK Window"));
   win.text = win.name;
+  win.shadow = true; // desktop windows float above the canvas
   win.variantLabel = options.variantLabel || win.name;
   win.variantOf = options.variantOf || null;
   win.barFill = toolkit === "kde" ? "#dae0e5" : win.fill;
@@ -1669,14 +1729,59 @@ function refreshWidgetIconOptions() {
   const select = document.getElementById("ppIcon");
   if (!select) return;
   const current = select.value;
-  select.innerHTML = '<option value="">None</option>';
-  for (const ic of libraryIcons) {
-    const option = document.createElement("option");
-    option.value = ic.src; option.textContent = ic.name;
-    select.appendChild(option);
-  }
+  select.innerHTML = '<option value="">None</option>' +
+    '<option value="__pick__">📂 Choose an asset…</option>' +
+    '<option disabled>──────────</option>';
+  const user = libraryIcons.filter(ic => ic.src.startsWith("user/"));
+  const builtin = libraryIcons.filter(ic => !ic.src.startsWith("user/"));
+  const addGroup = (label, items) => {
+    if (!items.length) return;
+    const group = document.createElement("optgroup");
+    group.label = label;
+    for (const ic of items) {
+      const option = document.createElement("option");
+      option.value = ic.src; option.textContent = ic.name.replace(/ \(user\)$/, "");
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  };
+  addGroup("Your assets", user);
+  addGroup("Built-in icons", builtin);
   select.value = libraryIcons.some(ic => ic.src === current) ? current : "";
 }
+// Upload an external file into the user assets folder and select it.
+function pickExternalAsset() {
+  const s = state.propOpen !== null ? state.shapes[state.propOpen] : null;
+  const select = document.getElementById("ppIcon");
+  select.value = (s && (s.widget === "image" ? s.src : s.icon)) || "";
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = ".png,.svg,.jpg,.jpeg,.webp,image/png,image/svg+xml,image/jpeg,image/webp";
+  picker.onchange = async () => {
+    const file = picker.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file);
+      });
+      const resp = await fetch("/assets/upload", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, dataUrl }) });
+      const out = await resp.json();
+      if (!resp.ok) { toast(out.error || "Upload failed", true); return; }
+      const list = await (await fetch("/assets")).json();
+      libraryIcons = list.icons || libraryIcons;
+      refreshWidgetIconOptions();
+      select.value = out.src;
+      applyPropPanel();
+      toast(`Added ${out.src}`);
+    } catch (err) {
+      toast(`Upload failed: ${err.message}`, true);
+    }
+  };
+  picker.click();
+}
+
 async function loadLibrary() {
   if (libraryLoaded) return;
   libraryLoaded = true;
@@ -1801,7 +1906,40 @@ function interactionTargets(trigger) {
   }).filter((s, i, all) => s && all.indexOf(s) === i);
 }
 
+// Resolve a name/id reference inside the trigger's window (fallback: design).
+function resolveInWindow(trigger, ref) {
+  const clean = String(ref || "").trim();
+  if (!clean) return null;
+  const root = rootWindowOf(trigger);
+  const scope = root ? [root, ...descendantsOf(root)] : state.shapes;
+  const low = clean.toLowerCase();
+  return scope.find(s => s.id === clean) || scope.find(s => String(s.name || "").toLowerCase() === low) || null;
+}
+
+// Declarative UI action on a control: action (toggle|show|hide|switch) + target.
+// `switch` shows the target and hides its sibling sections — content-pane
+// navigation. Purely UI-level; anything else belongs in application code.
+function performUiAction(trigger) {
+  const act = trigger?.action && trigger.action !== "none" ? trigger.action : null;
+  if (!act) return false;
+  const target = resolveInWindow(trigger, trigger.target);
+  if (!target) { toast(`No action target "${trigger.target || ""}"`, true); return true; }
+  if (act === "toggle") target.runtimeVisible = responsiveVisible(target) ? false : true;
+  else if (act === "show") target.runtimeVisible = true;
+  else if (act === "hide") target.runtimeVisible = false;
+  else if (act === "switch") {
+    target.runtimeVisible = true;
+    const parent = target.parent ? byId(target.parent) : null;
+    if (parent) for (const sib of childrenOf(parent))
+      if (sib !== target && sib.widget === "section") sib.runtimeVisible = false;
+  }
+  relayout(); render();
+  toast(`${act} → ${target.name || target.id}: ${responsiveVisible(target) ? "shown" : "hidden"}`);
+  return true;
+}
+
 function toggleInteractionTarget(trigger) {
+  if (performUiAction(trigger)) return true;
   const targets = interactionTargets(trigger);
   if (!targets.length) { toast(`No hide/show interaction for "${trigger?.name || "element"}"`, true); return false; }
   for (const target of targets) target.runtimeVisible = responsiveVisible(target) ? false : true;
@@ -1865,7 +2003,7 @@ function hugDimensions(s, seen = new Set()) {
   const metric = def && (def[s.toolkit] || def.gtk4);
   const P = side4(s.padding);
   const fs = s.fontSize || 14;
-  const textW = s.text ? Math.ceil(String(s.text).length * fs * 0.62) : 0;
+  const textW = s.text && s.showText !== false ? Math.ceil(String(s.text).length * fs * 0.62) : 0;
   let w = Math.max(metric?.w || 24, textW + P.l + P.r + 16);
   const availableTextW = Math.max(1, (s.w || w) - P.l - P.r - 16);
   const lineCount = s.textOverflow === "wrap" && s.text
@@ -1874,6 +2012,10 @@ function hugDimensions(s, seen = new Set()) {
   if (isContainer(s)) {
     const kids = childrenOf(s).filter(k => !k.fixed).sort((a, b) => slotOf(a) - slotOf(b));
     if (kids.length) {
+      // A hug container follows its content; the library's default size is a
+      // starting metric for empty insertion, not a minimum.
+      w = Math.max(24, textW + P.l + P.r + 16);
+      h = P.t + P.b + containerHeadOffset(s);
       const gap = Number(s.gap != null ? s.gap : 12) || 0;
       const boxes = kids.map(k => {
         const natural = hugDimensions(k, new Set(seen)), M = side4(k.margin);
@@ -2349,8 +2491,10 @@ const WIDGETS = {
   // ----- Sections / containers -----
   window:   { label: "Window",   cat: "Sections", gtk4: { w: 600, h: 400, radius: 12 }, kde: { w: 600, h: 400, radius: 4 },
               defaults: { text: "Window", fill: "#ffffff", stroke: "#c9ced6", strokeWidth: 1, textColor: "#111827" } },
+  // Sections are pure layout containers — no text of their own by default.
+  // Want a title? Place a Label child, or enable the caption explicitly.
   section:  { label: "Section",  cat: "Sections", gtk4: { w: 240, h: 160, radius: 8 }, kde: { w: 240, h: 160, radius: 4 },
-              defaults: { text: "Section", showCaption: true, fill: "none", stroke: "#9aa1ac", strokeWidth: 1, textColor: "#6b7280" } },
+              defaults: { text: "", showCaption: false, fill: "none", stroke: "#9aa1ac", strokeWidth: 1, textColor: "#6b7280" } },
   // ----- Input -----
   button:   { label: "Button",   cat: "Input", gtk4: { w: 120, h: 34, radius: 8, padding: { t: 6, r: 12, b: 6, l: 12 } }, kde: { w: 110, h: 30, radius: 4, padding: { t: 4, r: 8, b: 4, l: 8 } },
               defaults: { text: "Button", fill: "#e7eaee", stroke: "#c9ced6", strokeWidth: 1, textColor: "#111827", alignH: "center", iconSize: 18, iconPosition: "left", iconGap: 6 } },
@@ -2570,6 +2714,36 @@ function pasteStyle() {
   toast(`Style applied to ${n} element(s)`);
 }
 
+// ----- Toolkit defaults reapplication -------------------------------------
+// Reapply the documented toolkit metrics (sizes, radius, padding, gap) and the
+// registry's visual style to a widget subtree, without touching semantic text,
+// names, or state (checked/on/value/count/active/icon/controls stay as-is).
+const DEFAULT_STYLE_KEYS = ["fill", "stroke", "strokeWidth", "textColor", "barFill", "headerFill", "thumbFill"];
+function applyToolkitDefaults(root, toolkit) {
+  const applyOne = (s) => {
+    if (s.type !== "widget" || !WIDGETS[s.widget]) return 0;
+    const reg = WIDGETS[s.widget];
+    const size = reg[toolkit] || {};
+    // Sizes only on fixed axes (fill/hug/percent are layout-driven), and never
+    // on Windows — their dimensions are design data, not a toolkit metric.
+    if (!isWindow(s)) {
+      if ((s.sizeModeX || "fixed") === "fixed" && size.w) s.w = size.w;
+      if ((s.sizeModeY || "fixed") === "fixed" && size.h) s.h = size.h;
+    }
+    if (size.radius != null) s.radius = size.radius;
+    const d = reg.defaults || {};
+    if (size.padding != null) s.padding = side4(size.padding);
+    else if (d.padding != null) s.padding = side4(d.padding);
+    if (d.gap != null) s.gap = d.gap;
+    for (const k of DEFAULT_STYLE_KEYS) if (d[k] !== undefined) s[k] = d[k];
+    s.toolkit = toolkit;
+    return 1;
+  };
+  let n = applyOne(root);
+  if (isContainer(root)) for (const k of descendantsOf(root)) n += applyOne(k);
+  return n;
+}
+
 // ----- Elements tree (sidebar) --------------------------------------------
 // Full hierarchy, visible even when a wrong z hides an element on canvas.
 // Click selects; drag re-parents / reorders (and lifts above the drop
@@ -2665,9 +2839,12 @@ const SET_ENUMS = {
   alignH: ["left", "center", "right"], alignV: ["top", "middle", "bottom"],
   toolkit: ["gtk4", "kde"], buttonSide: ["left", "right"], orientation: ["horizontal", "vertical"],
   resizeMode: ["reflow", "scale"], iconPosition: ["left", "right", "top", "bottom", "only"],
+  strokeStyle: ["solid", "dashed"], captionMode: ["block", "border"],
+  captionSide: ["top", "bottom"], captionAlign: ["left", "center", "right"],
+  action: ["none", "toggle", "show", "hide", "switch"],
 };
-const SET_BOOLEANS = new Set(["fixed", "filled", "wrap", "checked", "on", "bindScroll", "showCaption", "interactionEnabled"]);
-const SET_STRINGS = new Set(["name", "text", "fill", "stroke", "textColor", "icon", "controls", "barFill", "toggleTarget", "interactionControl"]);
+const SET_BOOLEANS = new Set(["fixed", "filled", "wrap", "checked", "on", "bindScroll", "showCaption", "interactionEnabled", "bold", "italic", "borderSides", "shadow", "showText"]);
+const SET_STRINGS = new Set(["name", "text", "fill", "stroke", "textColor", "icon", "controls", "barFill", "toggleTarget", "interactionControl", "fontFamily", "target", "src"]);
 const SET_NUMBERS = {
   x: [-Infinity, Infinity], y: [-Infinity, Infinity], w: [1, Infinity], h: [1, Infinity], z: [-Infinity, Infinity],
   opacity: [0, 100], strokeWidth: [0, Infinity], strokeOpacity: [0, 100], radius: [0, Infinity],
@@ -2685,8 +2862,10 @@ function validatedSet(path, raw) {
   if (["__proto__", "prototype", "constructor"].includes(prop) || ["__proto__", "prototype", "constructor"].includes(side))
     return { error: "unsafe property name" };
   if (side != null) {
-    if (!["margin", "padding"].includes(prop)) return { error: `nested property is only valid for margin or padding` };
+    if (!["margin", "padding", "borderSides"].includes(prop)) return { error: `nested property is only valid for margin, padding or borderSides` };
     if (!["t", "r", "b", "l"].includes(side)) return { error: `unknown side "${side}" — use t, r, b or l` };
+    if (prop === "borderSides")
+      return typeof raw === "boolean" ? { value: raw } : { error: `borderSides.${side} must be true or false` };
     const n = Number(raw);
     return Number.isFinite(n) && n >= 0 ? { value: n } : { error: `${prop}.${side} must be a number ≥ 0` };
   }
@@ -2714,13 +2893,17 @@ function validatedSet(path, raw) {
 }
 
 const CMD_HELP =
-  'add <widget|rect|ellipse> [into <container>] · add window empty [gtk4|kde] [w] [h] [name] · ' +
+  'new canvas <w> <h> · ' +
+  'add <widget|rect|ellipse> [into <container>] [with <prop> <value> …] · ' +
+  'add window empty [gtk4|kde] [w] [h] [name] · ' +
   'add window copy <source> [w] [h] [name] · set <el> <prop>[.<side>] <value> · ' +
   'move <el> <dx> <dy> · move <el> into <container> [<slot>] · resize <el> <w> <h> · ' +
-  'del <el> · copy <el> [n] · rename <el> <name> · select <el> · arrange <container> · ' +
-  'make-widget [name] · enter <composite> · exit · ungroup <composite|section> · ' +
-  'theme <GTK light|GTK dark|KDE light|KDE dark> · tree [root] [all] · inspect <el> · ' +
-  'selection · ui <hide|show|toggle> · list · help';
+  'del <el> · copy <el> [n] · cut <el> · paste · rename <el> <name> · ' +
+  'select <el> [<el> …] · select add <el> · select none · arrange <container> · ' +
+  'group [name] · make-widget [name] · enter <composite> · exit · ungroup <composite|section> · ' +
+  'front <el> · back <el> · style copy <el> · style apply [<el> …] · ' +
+  'defaults <el> [gtk4|kde] · theme <GTK light|GTK dark|KDE light|KDE dark> · ' +
+  'assets [filter] · tree [root] [all] · inspect <el> · selection · ui <hide|show|toggle> · list · help';
 
 function runCommand(input) {
   const res = execCommand(input);
@@ -2779,17 +2962,29 @@ function execCommand(input) {
   const t = tokenize(input);
   if (!t.length) return { ok: false, msg: "empty command" };
   const verb = t[0].toLowerCase();
-  const done = (msg) => {
+  const done = (msg, data) => {
     relayout();
     if (state.propOpen !== null) syncPropPanel();
     render();
-    return { ok: true, msg };
+    return data ? { ok: true, msg, data } : { ok: true, msg };
   };
   const fail = (msg) => ({ ok: false, msg });
   try {
+    // Remote commands can arrive before any design exists; everything except
+    // `new` and `help` needs an open canvas.
+    if (verb !== "new" && verb !== "help" && !(state.ready && state.docMode === "canvas"))
+      return fail("no active design canvas — run: new canvas <w> <h>");
     switch (verb) {
       case "help":
         return { ok: true, msg: CMD_HELP };
+
+      case "new": {
+        if ((t[1] || "").toLowerCase() !== "canvas") return fail("new canvas <w> <h>");
+        const w = Math.max(100, Number(t[2]) || 1400), h = Math.max(100, Number(t[3]) || 900);
+        hideStart();
+        newCanvas(w, h);
+        return { ok: true, msg: `new canvas ${w}×${h}` };
+      }
 
       case "ui": {
         const mode = (t[1] || "toggle").toLowerCase();
@@ -2836,12 +3031,26 @@ function execCommand(input) {
           }
           return fail("add window empty [gtk4|kde] [w] [h] [name] | add window copy <source> [w] [h] [name]");
         }
-        const intoIdx = t.indexOf("into");
-        const container = intoIdx > 0 ? findShape(t[intoIdx + 1]) : null;
-        if (intoIdx > 0 && !container) return fail(`no container "${t[intoIdx + 1]}"`);
+        // add <kind> [x y w h] [into <container>] [with <prop> <value> …]
+        const withIdx = t.indexOf("with");
+        const head = withIdx > 0 ? t.slice(0, withIdx) : t;
+        const propTokens = withIdx > 0 ? t.slice(withIdx + 1) : [];
+        if (propTokens.length % 2) return fail("with expects <prop> <value> pairs — quote values containing spaces");
+        const intoIdx = head.indexOf("into");
+        const container = intoIdx > 0 ? findShape(head[intoIdx + 1]) : null;
+        if (intoIdx > 0 && !container) return fail(`no container "${head[intoIdx + 1]}"`);
+        // Validate all pairs before creating anything, so a bad pair adds nothing.
+        const pairs = [];
+        for (let i = 0; i < propTokens.length; i += 2) {
+          const prop = propTokens[i], rawVal = propTokens[i + 1];
+          if (prop === "name" || prop === "slot") { pairs.push([prop, rawVal]); continue; }
+          const checked = validatedSet(prop.split("."), parseVal(rawVal));
+          if (checked.error) return fail(checked.error);
+          pairs.push([prop, checked.value]);
+        }
         let el;
         if (kind === "rect" || kind === "ellipse") {
-          const nums = t.slice(2, intoIdx > 0 ? intoIdx : undefined).map(Number);
+          const nums = head.slice(2, intoIdx > 0 ? intoIdx : undefined).map(Number);
           const [x = 100, y = 100, w = 160, h = 60] = nums;
           el = { id: nextId(), parent: null, type: kind, x, y, w, h,
             name: nextName(kind), text: "", filled: true, fixed: false, z: nextZ(),
@@ -2850,14 +3059,31 @@ function execCommand(input) {
           state.shapes.push(el);
           adoptShape(el);
         } else if (WIDGETS[kind]) {
-          insertWidget(kind, libToolkit);
-          el = state.shapes[state.shapes.length - 1];
+          if (container && isContainer(container)) {
+            // Create directly in the target container: the insertWidget path
+            // adopts at the canvas centre first, and that transient layout
+            // pass can permanently stretch the new widget's geometry.
+            el = addPresetChild(kind, libToolkit, container, 9999);
+          } else {
+            insertWidget(kind, libToolkit);
+            el = state.shapes[state.shapes.length - 1];
+          }
         } else {
           return fail(`unknown element "${kind}" — rect, ellipse, ${Object.keys(WIDGETS).join(", ")}`);
         }
         if (container && isContainer(container) && !isWindow(el)) { el.parent = container.id; el.slot = 9999; }
+        for (const [prop, val] of pairs) {
+          if (prop === "name") { el.name = uniqueName(String(val)); continue; }
+          if (prop === "slot") { el.slot = Number(val) - 0.5; continue; }
+          const path = prop.split(".");
+          if (path.length === 2) {
+            const next = path[0] === "borderSides" ? borderSides4(el) : side4(el[path[0]]);
+            next[path[1]] = val; el[path[0]] = next;
+          } else el[prop] = val;
+        }
         selectOnly(state.shapes.indexOf(el));
-        return done(`added ${el.name}${container ? " into " + (container.name || container.id) : ""}`);
+        return done(`added ${el.name}${container ? " into " + (container.name || container.id) : ""}`,
+          { kind: "add", id: el.id, name: el.name });
       }
 
       case "set": {
@@ -2870,7 +3096,7 @@ function execCommand(input) {
         if (checked.error) return fail(checked.error);
         const val = checked.value;
         if (path.length === 2) {
-          const next = side4(s[path[0]]);
+          const next = path[0] === "borderSides" ? borderSides4(s) : side4(s[path[0]]);
           next[path[1]] = val;
           s[path[0]] = next;
         } else {
@@ -2967,11 +3193,107 @@ function execCommand(input) {
       }
 
       case "select": {
-        const s = findShape(t[1]);
-        if (!s) return fail(`no element "${t[1]}"`);
-        selectOnly(state.shapes.indexOf(s));
+        // select none · select add <el> · select <el> [<el> …]
+        if ((t[1] || "").toLowerCase() === "none") {
+          clearSelection(); render();
+          return { ok: true, msg: "selection cleared" };
+        }
+        const adding = (t[1] || "").toLowerCase() === "add";
+        const refs = t.slice(adding ? 2 : 1);
+        if (!refs.length) return fail("select <el> [<el> …] | select add <el> | select none");
+        let found = refs.map(r => [r, findShape(r)]);
+        // Unquoted multi-word name: fall back to all tokens as one reference.
+        if (found.some(([, s]) => !s) && findShape(refs.join(" ")))
+          found = [[refs.join(" "), findShape(refs.join(" "))]];
+        const missing = found.find(([, s]) => !s);
+        if (missing) return fail(`no element "${missing[0]}" — quote multi-word names`);
+        found.forEach(([, s], i) => {
+          const idx = state.shapes.indexOf(s);
+          if (!adding && i === 0) selectOnly(idx);
+          else if (!state.selection.includes(idx)) toggleInSelection(idx);
+        });
         render();
-        return { ok: true, msg: `selected ${s.name || s.id}` };
+        return { ok: true, msg: `selected ${state.selection.length} element(s)` };
+      }
+
+      case "group": {
+        if (!state.selection.length) return fail("select element(s) first (select <el> <el> …)");
+        const count = state.shapes.length;
+        groupSelection();
+        if (state.shapes.length === count) return fail("could not group the selection");
+        const sec = state.shapes[state.selected];
+        if (t[1]) sec.name = uniqueName(t.slice(1).join(" "));
+        return done(`grouped into ${sec.name}`);
+      }
+
+      case "front": case "back": {
+        const ref = t.slice(1).join(" ");
+        const s = findShape(ref);
+        if (!s) return fail(`no element "${ref}"`);
+        selectOnly(state.shapes.indexOf(s));
+        if (verb === "front") bringFront(); else sendBack();
+        return done(`${s.name || s.id} sent to ${verb}`);
+      }
+
+      case "cut": {
+        const ref = t.slice(1).join(" ");
+        const s = findShape(ref);
+        if (!s) return fail(`no element "${ref}"`);
+        if (isWindow(s) && state.shapes.filter(isWindow).length <= 1)
+          return fail("the root Window can't be cut");
+        selectOnly(state.shapes.indexOf(s));
+        cutSelected();
+        return done(`cut ${s.name || ref}`);
+      }
+
+      case "paste": {
+        if (!clipboard || !clipboard.length) return fail("clipboard is empty — cut or copy first");
+        pasteClipboard();
+        const s = state.shapes[state.selected];
+        return done(`pasted ${s ? s.name || s.id : "clipboard"}`);
+      }
+
+      case "style": {
+        const mode = (t[1] || "").toLowerCase();
+        if (mode === "copy") {
+          const ref = t.slice(2).join(" ");
+          const s = findShape(ref);
+          if (!s) return fail(`no element "${ref}"`);
+          selectOnly(state.shapes.indexOf(s));
+          copyStyle();
+          return { ok: true, msg: `style copied from ${s.name || s.id}` };
+        }
+        if (mode === "apply") {
+          if (!styleClipboard) return fail("copy a style first (style copy <el>)");
+          if (t[2]) {
+            let targets = t.slice(2).map(r => [r, findShape(r)]);
+            if (targets.some(([, s]) => !s) && findShape(t.slice(2).join(" ")))
+              targets = [[t.slice(2).join(" "), findShape(t.slice(2).join(" "))]];
+            const missing = targets.find(([, s]) => !s);
+            if (missing) return fail(`no element "${missing[0]}" — quote multi-word names`);
+            targets.forEach(([, s], i) => {
+              const idx = state.shapes.indexOf(s);
+              if (i === 0) selectOnly(idx); else if (!state.selection.includes(idx)) toggleInSelection(idx);
+            });
+          }
+          if (!state.selection.length) return fail("select element(s) or name targets: style apply <el> …");
+          pasteStyle();
+          return done(`style applied to ${state.selection.length} element(s)`);
+        }
+        return fail("style copy <el> | style apply [<el> …]");
+      }
+
+      case "defaults": {
+        // Optional toolkit is the last token; the rest is the element reference.
+        const last = (t[t.length - 1] || "").toLowerCase();
+        const hasToolkit = ["gtk4", "kde"].includes(last) && t.length > 2;
+        const ref = t.slice(1, hasToolkit ? -1 : undefined).join(" ");
+        const s = findShape(ref);
+        if (!s) return fail(`no element "${ref}" — defaults <el> [gtk4|kde]`);
+        const toolkit = hasToolkit ? last : s.toolkit || libToolkit;
+        const n = applyToolkitDefaults(s, toolkit);
+        if (!n) return fail("no toolkit widgets in that subtree");
+        return done(`applied ${toolkit} defaults to ${n} widget(s) in ${s.name || s.id}`);
       }
 
       case "arrange": {
@@ -2990,6 +3312,17 @@ function execCommand(input) {
         renderSwatches();
         applyThemeToDesign();
         return { ok: true, msg: `theme ${key}` };
+      }
+
+      case "assets": {
+        const filter = t.slice(1).join(" ").toLowerCase();
+        if (!libraryIcons.length)
+          return fail("asset list not loaded yet — open the editor Library once, then retry");
+        const rows = libraryIcons
+          .filter(ic => !filter || ic.name.toLowerCase().includes(filter) || ic.src.toLowerCase().includes(filter))
+          .map(ic => `${ic.src}${ic.src.startsWith("user/") ? "  (user)" : ""}`);
+        return { ok: true, msg: rows.join("\n") || "no assets match",
+          data: { kind: "assets", count: rows.length } };
       }
 
       case "tree": case "list": {
@@ -3173,6 +3506,19 @@ function ungroupSelection() {
 // ----- Ctrl+Click element properties panel ------------------------------
 const PP = (id) => document.getElementById("pp" + id);
 
+// With Show text off, the rest of the Text category is inert — grey it out.
+// (The element Name lives in its own section and is never affected.)
+const TEXT_CONTROL_IDS = ["Text", "Font", "Bold", "Italic", "FontFamily",
+  "AlignH", "AlignV", "TextOverflow", "TextColor",
+  "ShowCaption", "CaptionMode", "CaptionSide", "CaptionAlign"];
+function updateTextControlsDisabled(off) {
+  for (const id of TEXT_CONTROL_IDS) {
+    const el = PP(id);
+    el.disabled = off;
+    (el.closest("label") || el).style.opacity = off ? ".45" : "";
+  }
+}
+
 // Show element `index` in the docked sidebar properties panel.
 function openProps(index) {
   const s = state.shapes[index];
@@ -3254,7 +3600,27 @@ function syncPropPanel() {
   const caption = s.type === "widget" && s.widget === "section";
   document.getElementById("ppCaptionRow").hidden = !caption;
   PP("ShowCaption").checked = caption && sectionCaptionVisible(s);
+  document.getElementById("ppCaptionOpts").hidden = !(caption && sectionCaptionVisible(s));
+  if (caption) {
+    PP("CaptionMode").value = s.captionMode || "block";
+    PP("CaptionSide").value = s.captionSide || "top";
+    PP("CaptionAlign").value = s.captionAlign || "left";
+  }
   PP("TextColor").value = s.textColor || "#ffffff";
+  PP("ShowText").checked = s.showText !== false;
+  updateTextControlsDisabled(s.showText === false);
+  PP("Bold").checked = !!s.bold;
+  PP("Italic").checked = !!s.italic;
+  PP("FontFamily").value = s.fontFamily || "";
+  PP("Shadow").checked = !!s.shadow;
+  PP("StrokeStyle").value = s.strokeStyle || "solid";
+  const perSide = s.type === "widget" && ["section", "window"].includes(s.widget);
+  document.getElementById("ppBorderSidesRow").hidden = !perSide;
+  if (perSide) {
+    const B = borderSides4(s);
+    PP("BorderT").checked = B.t; PP("BorderR").checked = B.r;
+    PP("BorderB").checked = B.b; PP("BorderL").checked = B.l;
+  }
   const composite = isComposite(s);
   document.getElementById("ppCompositeSec").hidden = !composite;
   if (composite) {
@@ -3268,10 +3634,15 @@ function syncPropPanel() {
   // canvas elements. Keep the picker focused on widgets where an icon is a
   // normal toolkit concept.
   const iconCapable = s.type === "widget" && ["button", "toolbutton", "menuitem", "textbox"].includes(s.widget);
-  document.getElementById("ppIconSec").hidden = !iconCapable;
-  if (iconCapable) {
+  const imageWidget = s.type === "widget" && s.widget === "image";
+  document.getElementById("ppIconSec").hidden = !iconCapable && !imageWidget;
+  if (iconCapable || imageWidget) {
     refreshWidgetIconOptions();
-    PP("Icon").value = s.icon || "";
+    PP("Icon").value = (imageWidget ? s.src : s.icon) || "";
+    // Placement/size/gap describe icon-in-control layout; an Image widget's
+    // asset simply fills its frame, so those rows hide.
+    for (const id of ["IconSize", "IconPosition", "IconGap"])
+      (PP(id).closest("label") || PP(id)).hidden = imageWidget;
     const iconSize = Math.max(8, Number(s.iconSize) || (s.widget === "menuitem" || s.widget === "textbox" ? 16 : 18));
     PP("IconSize").value = iconSize; PP("IconSizev").textContent = iconSize;
     PP("IconPosition").value = s.iconPosition || (s.widget === "toolbutton" ? "only" : "left");
@@ -3283,6 +3654,11 @@ function syncPropPanel() {
   const interactionCapable = interactionTrigger || interactiveScroll || interactionTargetContainer;
   document.getElementById("ppInteractionSec").hidden = !interactionCapable;
   if (interactionCapable) {
+    document.getElementById("ppActionRows").hidden = !interactionTrigger;
+    if (interactionTrigger) {
+      PP("Action").value = s.action || "none";
+      PP("ActionTarget").value = s.target || "";
+    }
     PP("InteractionEnabled").checked = s.interactionEnabled != null ? !!s.interactionEnabled : interactiveScroll;
     PP("ToggleTarget").value = interactionTargetContainer ? (s.interactionControl || "") : (s.toggleTarget || "");
     const targetRow = document.getElementById("ppToggleTargetRow");
@@ -3407,8 +3783,25 @@ function applyPropPanel() {
   s.alignH = PP("AlignH").value;
   s.alignV = PP("AlignV").value;
   s.textOverflow = PP("TextOverflow").value;
-  if (s.type === "widget" && s.widget === "section") s.showCaption = PP("ShowCaption").checked;
+  if (s.type === "widget" && s.widget === "section") {
+    s.showCaption = PP("ShowCaption").checked;
+    s.captionMode = PP("CaptionMode").value;
+    s.captionSide = PP("CaptionSide").value;
+    s.captionAlign = PP("CaptionAlign").value;
+    document.getElementById("ppCaptionOpts").hidden = !s.showCaption;
+  }
   s.textColor = PP("TextColor").value;
+  s.showText = PP("ShowText").checked ? undefined : false;
+  updateTextControlsDisabled(s.showText === false);
+  s.bold = PP("Bold").checked || undefined;
+  s.italic = PP("Italic").checked || undefined;
+  s.fontFamily = PP("FontFamily").value.trim() || undefined;
+  s.shadow = PP("Shadow").checked || undefined;
+  s.strokeStyle = PP("StrokeStyle").value === "dashed" ? "dashed" : undefined;
+  if (s.type === "widget" && ["section", "window"].includes(s.widget)) {
+    const B = { t: PP("BorderT").checked, r: PP("BorderR").checked, b: PP("BorderB").checked, l: PP("BorderL").checked };
+    s.borderSides = (B.t && B.r && B.b && B.l) ? undefined : B;
+  }
   const interactionTrigger = s.type === "widget" && ["button", "toolbutton", "menuitem"].includes(s.widget);
   const interactiveScroll = (isContainer(s) && PP("Overflow").value === "scroll") || s.widget === "scrollbar";
   const interactionTargetContainer = s.type === "widget" && ["section", "composite"].includes(s.widget) && !interactiveScroll;
@@ -3417,13 +3810,23 @@ function applyPropPanel() {
     s.toggleTarget = interactionTrigger ? PP("ToggleTarget").value.trim() : "";
     s.interactionControl = interactionTargetContainer ? PP("ToggleTarget").value.trim() : "";
   }
-  if (s.type === "widget" && ["button", "toolbutton", "menuitem", "textbox"].includes(s.widget)) {
+  if (interactionTrigger) {
+    const act = PP("Action").value;
+    s.action = act !== "none" ? act : undefined;
+    s.target = PP("ActionTarget").value.trim() || undefined;
+  }
+  if (s.type === "widget" && ["button", "toolbutton", "menuitem", "textbox"].includes(s.widget)
+      && PP("Icon").value !== "__pick__") {
     s.icon = PP("Icon").value || null;
     s.iconSize = Math.max(8, Number(PP("IconSize").value) || 18);
     s.iconPosition = PP("IconPosition").value || "left";
     s.iconGap = Math.max(0, Number(PP("IconGap").value) || 0);
     PP("IconSizev").textContent = s.iconSize;
     if (s.icon) getIconImage(s.icon);
+  }
+  if (s.type === "widget" && s.widget === "image" && PP("Icon").value !== "__pick__") {
+    s.src = PP("Icon").value || null;
+    if (s.src) getIconImage(s.src);
   }
   if (isContainer(s)) {
     s.layout = PP("Layout").value; s.align = normalizeAlign(PP("Align").value);
@@ -3521,6 +3924,19 @@ function serializeShape(s) {
     };
     if (s.variantOf) out.variantOf = s.variantOf;
     if (s.variantLabel) out.variantLabel = s.variantLabel;
+    if (s.strokeStyle) out.strokeStyle = s.strokeStyle;
+    if (s.borderSides != null) out.borderSides = borderSides4(s);
+    if (s.captionMode) out.captionMode = s.captionMode;
+    if (s.captionSide) out.captionSide = s.captionSide;
+    if (s.captionAlign) out.captionAlign = s.captionAlign;
+    if (s.bold) out.bold = true;
+    if (s.italic) out.italic = true;
+    if (s.fontFamily) out.fontFamily = s.fontFamily;
+    if (s.shadow) out.shadow = true;
+    if (s.showText === false) out.showText = false;
+    if (s.src) out.src = s.src;
+    if (s.action && s.action !== "none") out.action = s.action;
+    if (s.target) out.target = s.target;
     if (s.checked != null) out.checked = !!s.checked;
     if (s.on != null) out.on = !!s.on;
     if (s.value != null) out.value = s.value;
@@ -3617,6 +4033,41 @@ function exportableShapes() {
   return list;
 }
 
+// Template instructions embedded in every exported design so any AI that reads
+// the JSON alone — without the separate AI_SKILL guide — still translates the
+// mockup's accent hexes into theme tokens instead of hardcoding them. Keep this
+// in sync with the "Theme-following colours" section of AI_SKILL.md.
+const AI_THEME_TEMPLATE = {
+  README: "Instructions for AI code generation. This mockup paints accent-role elements with concrete hexes (below) so the design reads faithfully. When you generate the REAL application code, DO NOT emit those accent hexes — map each to the theme token / style class so the built app follows whatever accent and light/dark the user has chosen. Same 'no hardcoded colours, no CSS fighting the theme' rule the native example apps follow.",
+  translate: "Anything on an ACCENT role: primary/suggested buttons, a switch's on-track, progress fill, a drop-zone's border/text, links/accent text, selection.",
+  keepAsHex: "Only SEMANTIC STATUS tints (success/warning/error) and neutral surfaces with no matching token — and even then prefer a translucent tint, e.g. alpha(#hex, 0.16), so it survives dark mode.",
+  gtk4: {
+    note: "Prefer built-in STYLE CLASSES over colour references — they already carry the theme accent and its correct foreground.",
+    styleClasses: {
+      "primary / accent button": ".suggested-action",
+      "destructive button": ".destructive-action",
+      "card / surface panel": ".card",
+      "big title": ".title-1 … .title-4",
+      "subtitle / caption / status text": ".dim-label",
+      "section heading": ".heading",
+      "rounded / pill button": "add .pill",
+      "progress bar fill": "nothing — Gtk.ProgressBar fills in the theme accent automatically",
+    },
+    accentColorReference: "When custom CSS genuinely needs the accent colour (dashed drop-zone border, accent text on a tinted panel), use @theme_selected_bg_color (accent/selection bg) and @theme_selected_fg_color (text on it).",
+    avoid: "Do NOT use @accent_bg_color / @accent_color — those are libadwaita-only names; stock GTK themes such as Mint-Y do not define them, so the reference silently fails in an app-level CssProvider and the element renders faint or default. @theme_selected_bg_color is defined by essentially every GTK theme.",
+    customCss: "Keep custom CSS to GEOMETRY only — border-radius, padding, min-height. Load it at GTK_STYLE_PROVIDER_PRIORITY_APPLICATION so it layers over the theme without overriding its colours.",
+  },
+  kde: {
+    note: "Use theme roles, never hex.",
+    roles: {
+      accent: "Kirigami.Theme.highlightColor  (buttons' checked/selection state, progress, drop-zone border)",
+      content: "Kirigami.Theme.textColor / Kirigami.Theme.backgroundColor",
+      controls: "native controls (Button with a highlighted role, Kirigami.Card) so the Breeze accent and colour scheme apply automatically",
+    },
+  },
+  switches: "Every switch is three theme roles: a neutral thumb, a neutral off-track, and an accent on-track. The thumb never takes the track's state colour; the track communicates off vs on.",
+};
+
 // Build the canonical design document: everything needed to reload the design,
 // plus computed metrics for each shape. This is the single source of truth.
 function buildExport() {
@@ -3632,6 +4083,9 @@ function buildExport() {
       bgColor: state.bgColor,
     },
     grid: { on: state.grid.on, spacing_px: state.grid.spacing },
+    // Round-trips a design's own template if it carries one; otherwise stamps
+    // the current canonical template so older files gain it on next export.
+    aiTheme: state.aiTheme || AI_THEME_TEMPLATE,
     count: shapes.length,
     shapes,
   };
@@ -3654,7 +4108,8 @@ function loadDesign(doc) {
     w = bb.x + bb.width; h = bb.y + bb.height;
   }
   state.bgColor = c.bgColor || "#ffffff";
-  newCanvas(w, h); // blank canvas of the right size (clears shapes)
+  newCanvas(w, h); // blank canvas of the right size (clears shapes; resets aiTheme)
+  state.aiTheme = doc.aiTheme || null; // preserve a design's own template across a round-trip
   const loadSizing = (s) => ({
     sizeModeX: s.sizeModeX || "fixed", sizeModeY: s.sizeModeY || "fixed", grow: Number(s.grow) || 0,
     widthPercent: s.widthPercent != null ? Math.max(0, Math.min(100, Number(s.widthPercent))) : 100,
@@ -3697,6 +4152,15 @@ function loadDesign(doc) {
         iconPosition: s.iconPosition || null, iconGap: Number(s.iconGap) || 0,
         frame: s.frame ? JSON.parse(JSON.stringify(s.frame)) : undefined,
         resizeMode: s.resizeMode || "reflow",
+        strokeStyle: s.strokeStyle || undefined,
+        borderSides: s.borderSides != null ? { ...s.borderSides } : undefined,
+        captionMode: s.captionMode || undefined, captionSide: s.captionSide || undefined,
+        captionAlign: s.captionAlign || undefined,
+        bold: !!s.bold || undefined, italic: !!s.italic || undefined,
+        fontFamily: s.fontFamily || undefined, shadow: !!s.shadow || undefined,
+        showText: s.showText === false ? false : undefined,
+        src: s.src || undefined,
+        action: s.action || undefined, target: s.target || undefined,
         showCaption: s.widget === "section" ? (s.showCaption != null ? !!s.showCaption : !!String(s.text || "").trim()) : undefined };
     }
     if (s.type === "rect" || s.type === "ellipse") {
@@ -3726,6 +4190,10 @@ function loadDesign(doc) {
   // Honor the document's mode, else infer it from the shape types present.
   const hasElements = state.shapes.some(isElement);
   state.docMode = doc.mode || (hasElements ? "canvas" : "screenshot");
+  if (state.docMode === "screenshot") { // measuring labels are the point there
+    state.showNumbers = true;
+    document.getElementById("showNumbers").checked = true;
+  }
   applyModeUI();
   if (doc.grid) {
     state.grid.on = !!doc.grid.on;
@@ -3859,6 +4327,21 @@ function elementXml(s, indent) {
   if (s.alignV) a.push(`text-align-v="${xmlEsc(s.alignV)}"`);
   if (s.textOverflow) a.push(`text-overflow="${xmlEsc(s.textOverflow)}"`);
   if (s.widget === "section") a.push(`show-caption="${sectionCaptionVisible(s)}"`);
+  if (s.strokeStyle) a.push(`border-style="${xmlEsc(s.strokeStyle)}"`);
+  if (s.borderSides != null) {
+    const B = borderSides4(s);
+    a.push(`border-sides="${["t", "r", "b", "l"].filter(k => B[k]).join(",")}"`);
+  }
+  if (s.captionMode) a.push(`caption-mode="${xmlEsc(s.captionMode)}"`);
+  if (s.captionSide) a.push(`caption-side="${xmlEsc(s.captionSide)}"`);
+  if (s.captionAlign) a.push(`caption-align="${xmlEsc(s.captionAlign)}"`);
+  if (s.bold) a.push('bold="true"');
+  if (s.italic) a.push('italic="true"');
+  if (s.fontFamily) a.push(`font-family="${xmlEsc(s.fontFamily)}"`);
+  if (s.shadow) a.push('shadow="true"');
+  if (s.showText === false) a.push('show-text="false"');
+  if (s.action && s.action !== "none") a.push(`action="${xmlEsc(s.action)}"`);
+  if (s.target) a.push(`target="${xmlEsc(s.target)}"`);
   a.push(`size-x="${xmlEsc(s.sizeModeX || "fixed")}" size-y="${xmlEsc(s.sizeModeY || "fixed")}"`);
   if (s.sizeModeX === "percent") a.push(`width-percent="${s.widthPercent != null ? s.widthPercent : 100}"`);
   if (s.sizeModeY === "percent") a.push(`height-percent="${s.heightPercent != null ? s.heightPercent : 100}"`);
@@ -3993,8 +4476,22 @@ function htmlNodeStyle(s, parent) {
   if (s.maxH) out.push(`max-height:${cssPx(s.maxH)}`);
   if (indicator) out.push("background:transparent", `--sr-accent:${look.fill || "#4a9eff"}`, `accent-color:${look.fill || "#4a9eff"}`);
   else if (look.fill && look.fill !== "none") out.push(`background:${look.fill}`); else out.push("background:transparent");
+  if (s.bold) out.push("font-weight:700");
+  if (s.italic) out.push("font-style:italic");
+  if (s.fontFamily) out.push(`font-family:${s.fontFamily}`);
   const sw = Math.max(0, Number(look.strokeWidth) || 0);
-  out.push(`border:${indicator ? 0 : sw}px solid ${look.stroke || "transparent"}`, `border-radius:${cssPx(look.radius || 0)}`);
+  const bs = (s.strokeStyle || "solid") === "dashed" ? "dashed" : "solid";
+  const B = borderSides4(s);
+  if (indicator || !sw) out.push("border:0");
+  else if (B.t && B.r && B.b && B.l) out.push(`border:${sw}px ${bs} ${look.stroke || "transparent"}`);
+  else {
+    out.push("border:0");
+    for (const [k, side] of [["t", "top"], ["r", "right"], ["b", "bottom"], ["l", "left"]])
+      if (B[k]) out.push(`border-${side}:${sw}px ${bs} ${look.stroke || "transparent"}`);
+  }
+  out.push(`border-radius:${cssPx(look.radius || 0)}`);
+  if (s.shadow) out.push(s.widget === "window"
+    ? "box-shadow:0 10px 30px rgba(0,0,0,.35)" : "box-shadow:0 2px 8px rgba(0,0,0,.18)");
   if (!isContainer(s)) out.push(`padding:${cssSides(s.padding)}`);
   return out.join(";");
 }
@@ -4026,12 +4523,14 @@ function htmlInteractionAttrs(s) {
   if (controlled) { enabled = true; toggleTarget = controlled.name || controlled.id; }
   if (s.interactionEnabled != null || controlled) out.push(`data-interactive="${enabled}"`);
   if (toggleTarget) out.push(`data-toggle-target="${htmlEsc(toggleTarget)}"`);
+  if (s.action && s.action !== "none" && s.target)
+    out.push(`data-action="${htmlEsc(s.action)}"`, `data-action-target="${htmlEsc(s.target)}"`);
   if (s.widget === "scrollbar" && s.bindScroll) out.push('data-bind-scroll="parent"');
   return out.length ? " " + out.join(" ") : "";
 }
 
 function htmlLeaf(s, style, assets) {
-  const text = htmlEsc(s.text || ""), icon = htmlIcon(s, assets);
+  const text = s.showText === false ? "" : htmlEsc(s.text || ""), icon = htmlIcon(s, assets);
   const attrs = `id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget || s.type)}" data-name="${htmlEsc(s.name || "")}"${htmlInteractionAttrs(s)} style="${style}"`;
   switch (s.widget) {
     case "button": case "toolbutton": case "menuitem": return `<button ${attrs}>${icon}${text}</button>`;
@@ -4061,10 +4560,16 @@ function htmlElement(s, parent, assets, indent = 2) {
   if (!kids.length && s.widget !== "section") {
     const justify = s.alignH === "right" ? "flex-end" : s.alignH === "center" ? "center" : "flex-start";
     const align = s.alignV === "bottom" ? "flex-end" : s.alignV === "middle" ? "center" : "flex-start";
-    return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}"${interaction} style="${style};display:flex;justify-content:${justify};align-items:${align};padding:${cssSides(s.padding)}">${htmlEsc(s.text || "")}</div>`;
+    return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}"${interaction} style="${style};display:flex;justify-content:${justify};align-items:${align};padding:${cssSides(s.padding)}">${s.showText === false ? "" : htmlEsc(s.text || "")}</div>`;
   }
+  const legend = (s.captionMode || "block") === "border";
+  const legendPos = (s.captionAlign || "left") === "center" ? "left:50%;transform:translateX(-50%)"
+    : (s.captionAlign === "right" ? "right:10px" : "left:10px");
+  const legendSide = (s.captionSide || "top") === "bottom" ? "bottom:-0.75em" : "top:-0.75em";
   const caption = sectionCaptionVisible(s)
-    ? `\n${pad}  <span class="sr-caption">${htmlEsc(s.text)}</span>` : "";
+    ? (legend
+      ? `\n${pad}  <span class="sr-legend" style="position:absolute;${legendSide};${legendPos};background:${effectiveBg(s)};padding:0 6px;font-size:86%;line-height:1.4;z-index:1">${htmlEsc(s.text)}</span>`
+      : `\n${pad}  <span class="sr-caption">${htmlEsc(s.text)}</span>`) : "";
   const childHtml = kids.map(k => htmlElement(k, s, assets, indent + 2)).join("\n");
   return `${pad}<div id="${cssId(s)}" class="sr-node sr-${htmlEsc(s.widget)}" data-name="${htmlEsc(s.name || "")}"${interaction} style="${style};display:flex;flex-direction:column">${caption}\n${pad}  <div class="sr-content" style="${htmlContainerStyle(s)}">\n${childHtml}\n${pad}  </div>\n${pad}</div>`;
 }
@@ -4135,6 +4640,25 @@ ${body}
     target.dataset.runtimeVisible = hidden ? "true" : "false";
     target.style.setProperty("display", hidden ? "flex" : "none", "important");
   });
+  document.addEventListener("click", (event) => {
+    const el = event.target.closest('[data-action][data-action-target]');
+    if (!el) return;
+    const root = el.closest('.sr-window') || document;
+    const target = [...root.querySelectorAll('[data-name]')].find(n => n.dataset.name === el.dataset.actionTarget)
+      || root.querySelector('#' + CSS.escape(el.dataset.actionTarget));
+    if (!target) return;
+    const show = (node, visible) => node.style.setProperty("display", visible ? "flex" : "none", "important");
+    const hidden = getComputedStyle(target).display === "none";
+    const act = el.dataset.action;
+    if (act === "toggle") show(target, hidden);
+    else if (act === "show") show(target, true);
+    else if (act === "hide") show(target, false);
+    else if (act === "switch") {
+      show(target, true);
+      for (const sib of target.parentElement?.children || [])
+        if (sib !== target && sib.classList.contains("sr-section")) show(sib, false);
+    }
+  });
   document.addEventListener("input", (event) => {
     const bar = event.target.closest('[data-interactive="true"][data-bind-scroll="parent"]');
     if (!bar) return;
@@ -4192,6 +4716,35 @@ function runLayoutSelfTests() {
     const label = { type: "widget", widget: "label", toolkit: "gtk4", text: "A long description that wraps over several lines",
       w: 90, h: 20, fontSize: 14, padding: 0, textOverflow: "wrap", sizeModeY: "hug" };
     check("wrapped-hug-height", hugDimensions(label).h > 20, String(hugDimensions(label).h));
+    // A hug container shrinks below the library's default section size.
+    const col = { id: "test_col", type: "widget", widget: "section", toolkit: "gtk4", layout: "vertical",
+      gap: 2, padding: 0, sizeModeY: "hug", showCaption: false, w: 100, h: 160 };
+    const colA = { id: "test_colA", parent: "test_col", slot: 0, type: "widget", widget: "label", w: 100, h: 18 };
+    const colB = { id: "test_colB", parent: "test_col", slot: 1, type: "widget", widget: "label", w: 100, h: 16 };
+    state.shapes.push(col, colA, colB);
+    check("container-hug-content", hugDimensions(col).h === 36, String(hugDimensions(col).h));
+    // Borders: per-side export, dashed style, legend caption, text styling.
+    const row = { id: "test_row", type: "widget", widget: "section", toolkit: "gtk4", name: "Row",
+      w: 200, h: 40, layout: "horizontal", stroke: "#d5d0cc", strokeWidth: 1,
+      borderSides: { t: false, r: false, b: true, l: false }, text: "Legend", showCaption: true,
+      captionMode: "border", captionSide: "top", captionAlign: "center", strokeStyle: "dashed",
+      bold: true, italic: true, fontFamily: "Cantarell" };
+    state.shapes.push(row);
+    const rowCss = htmlNodeStyle(row, null);
+    check("per-side-border-css", rowCss.includes("border:0") && rowCss.includes("border-bottom:1px dashed #d5d0cc")
+      && !rowCss.includes("border-top:"), rowCss.split(";").filter(x => x.startsWith("border")).join(";"));
+    check("text-style-css", rowCss.includes("font-weight:700") && rowCss.includes("font-style:italic")
+      && rowCss.includes("font-family:Cantarell"));
+    const rowJson = serializeShape(row), rowXml = elementXml(row, 0);
+    check("border-json", rowJson.borderSides.b === true && rowJson.borderSides.t === false
+      && rowJson.strokeStyle === "dashed" && rowJson.captionMode === "border" && rowJson.bold === true);
+    check("border-xml", rowXml.includes('border-sides="b"') && rowXml.includes('border-style="dashed"')
+      && rowXml.includes('caption-mode="border"') && rowXml.includes('bold="true"'));
+    check("legend-html", htmlElement(row, null, new Map()).includes('class="sr-legend"'));
+    check("legend-no-head-offset", containerHeadOffset(row) === 0, String(containerHeadOffset(row)));
+    const setSide = validatedSet(["borderSides", "b"], true);
+    const setBad = validatedSet(["borderSides", "b"], 3);
+    check("borderSides-set-validation", setSide.value === true && !!setBad.error);
     const win = { id: "test_window", type: "widget", widget: "window", w: 300, h: 200 };
     const target = { id: "test_target", parent: win.id, type: "widget", widget: "section", name: "Sidebar", w: 80, h: 100,
       interactionEnabled: true, interactionControl: "Trigger" };
@@ -4207,8 +4760,46 @@ function runLayoutSelfTests() {
     check("interaction-json", interactionJson.interactionEnabled === true && interactionJson.interactionControl === "Trigger");
     check("interaction-xml", interactionXml.includes('interaction-enabled="true"') && interactionXml.includes('interaction-control="Trigger"'));
     check("interaction-html", htmlLeaf(probe, "", new Map()).includes('data-toggle-target="Sidebar"'));
+    // Toolkit defaults reapplication: metrics + registry style, semantics kept.
+    const btn = { id: "test_btn", parent: win.id, type: "widget", widget: "button", toolkit: "gtk4",
+      name: "Save", text: "Save", x: 0, y: 0, w: 77, h: 19, radius: 2, fill: "#123456", checked: true };
+    state.shapes.push(btn);
+    const applied = applyToolkitDefaults(btn, "kde");
+    check("defaults-metrics", applied === 1 && btn.w === 110 && btn.h === 30 && btn.radius === 4 && btn.toolkit === "kde",
+      `${btn.w}×${btn.h} r${btn.radius}`);
+    check("defaults-keeps-semantics", btn.text === "Save" && btn.name === "Save" && btn.checked === true);
+    check("defaults-style", btn.fill === "#e7eaee" && btn.padding && btn.padding.l === 8);
+    const winBefore = { w: win.w, h: win.h };
+    applyToolkitDefaults(win, "gtk4");
+    check("defaults-window-size-kept", win.w === winBefore.w && win.h === winBefore.h, `${win.w}×${win.h}`);
+    check("defaults-bad-toolkit-rejected", execCommand("defaults test_btn qt").ok === false);
+    // Button UI actions: switch shows the target and hides sibling sections.
+    const paneA = { id: "test_paneA", parent: win.id, type: "widget", widget: "section", name: "Pane A", w: 50, h: 50 };
+    const paneB = { id: "test_paneB", parent: win.id, type: "widget", widget: "section", name: "Pane B", w: 50, h: 50, runtimeVisible: false };
+    const actBtn = { id: "test_actbtn", parent: win.id, type: "widget", widget: "button", name: "Go B",
+      text: "B", w: 40, h: 20, action: "switch", target: "Pane B", shadow: true };
+    state.shapes.push(paneA, paneB, actBtn);
+    performUiAction(actBtn);
+    check("action-switch", responsiveVisible(paneB) === true && responsiveVisible(paneA) === false);
+    const actJson = serializeShape(actBtn), actXml = elementXml(actBtn, 0);
+    check("action-json", actJson.action === "switch" && actJson.target === "Pane B" && actJson.shadow === true);
+    check("action-xml", actXml.includes('action="switch"') && actXml.includes('target="Pane B"') && actXml.includes('shadow="true"'));
+    check("action-html", htmlLeaf(actBtn, "", new Map()).includes('data-action="switch"')
+      && htmlLeaf(actBtn, "", new Map()).includes('data-action-target="Pane B"'));
+    check("shadow-css", htmlNodeStyle(actBtn, null).includes("box-shadow"));
+    check("action-set-validation", !!validatedSet(["action"], "explode").error
+      && validatedSet(["action"], "switch").value === "switch");
+    // Show-text toggle: label suppressed everywhere, text preserved in data.
+    actBtn.showText = false;
+    check("showtext-html", !htmlLeaf(actBtn, "", new Map()).includes(">B<"));
+    check("showtext-json", serializeShape(actBtn).showText === false && serializeShape(actBtn).text === "B");
+    check("showtext-xml", elementXml(actBtn, 0).includes('show-text="false"'));
+    check("showtext-set-validation", validatedSet(["showText"], false).value === false
+      && !!validatedSet(["showText"], "maybe").error);
   } finally {
     state.shapes = savedShapes; state.docMode = savedMode;
+    // Some checks render mid-test (e.g. performUiAction); repaint the real doc.
+    if (state.ready) { relayout(); render(); }
   }
   return { ok: results.every(r => r.ok), results };
 }
@@ -4270,8 +4861,14 @@ PP("H").addEventListener("input", () => { PP("SizeY").value = "fixed"; });
  "Font", "AlignH", "AlignV", "TextOverflow", "ShowCaption", "TextColor", "Icon", "IconSize", "IconPosition", "IconGap",
  "Layout", "Align", "Justify", "Gap", "Cols", "Wrap", "Overflow", "ScrollX", "ScrollY",
  "StateBool", "StateVal", "StateCount", "ScrollBind", "InteractionEnabled", "ToggleTarget",
- "CornersLinked", "RadiusTL", "RadiusTR", "RadiusBR", "RadiusBL", "ResizeMode"].forEach(k =>
+ "CornersLinked", "RadiusTL", "RadiusTR", "RadiusBR", "RadiusBL", "ResizeMode",
+ "ShowText", "Bold", "Italic", "FontFamily", "Shadow", "StrokeStyle",
+ "BorderT", "BorderR", "BorderB", "BorderL",
+ "CaptionMode", "CaptionSide", "CaptionAlign", "Action", "ActionTarget"].forEach(k =>
   PP(k).addEventListener("input", applyPropPanel));
+PP("Icon").addEventListener("change", () => {
+  if (PP("Icon").value === "__pick__") pickExternalAsset();
+});
 document.getElementById("ppFront").addEventListener("click", bringFront);
 document.getElementById("ppBack").addEventListener("click", sendBack);
 document.getElementById("ppArrange").addEventListener("click", () => {
@@ -4785,7 +5382,9 @@ canvas.addEventListener("mousedown", (e) => {
       }
       const p = screenToImage(sx, sy);
       const hit = hitTest(p);
-      if (state.mode === "select" && hit !== null && interactionTargets(state.shapes[hit]).length && !e.shiftKey) {
+      if (state.mode === "select" && hit !== null && !e.shiftKey &&
+          ((state.shapes[hit].action && state.shapes[hit].action !== "none" && state.shapes[hit].target) ||
+           interactionTargets(state.shapes[hit]).length)) {
         selectOnly(hit);
         toggleInteractionTarget(state.shapes[hit]);
         return;
@@ -4961,17 +5560,18 @@ let remoteCommandTimer = null;
 async function pollRemoteCommands() {
   clearTimeout(remoteCommandTimer);
   try {
-    if (state.ready && state.docMode === "canvas") {
+    // Drain the whole queue each tick so batched command streams run at
+    // execution speed instead of one command per poll interval.
+    for (let drained = 0; drained < 500; drained++) {
       const response = await fetch("/api/commands/next", { cache: "no-store" });
-      if (response.status === 200) {
-        const item = await response.json();
-        const result = runCommand(item.command);
-        await fetch("/api/commands/result", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id, ...result }),
-        });
-      }
+      if (response.status !== 200) break;
+      const item = await response.json();
+      const result = runCommand(item.command);
+      await fetch("/api/commands/result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, ...result }),
+      });
     }
   } catch (_) {
     // The editor may outlive a restarted local server; polling resumes quietly.

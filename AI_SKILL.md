@@ -82,6 +82,16 @@ Use semantic widgets instead of decorative rectangles whenever one exists.
 `rect`, `ellipse`, `icon`, and user-made `composite` elements also exist. Backend
 widgets express an implementation dependency; they do not implement storage.
 
+Assets: buttons/tool buttons/menu items/textboxes take an `icon`; the `image`
+widget takes a `src` that letterboxes inside its frame. Both accept built-in
+`SVGs/<name>.svg` entries or the user's own files dropped into
+`~Pictures/PixelRuller/assets/` (PNG/SVG/JPG/WebP), referenced as
+`user/<file>` — e.g. `set Image src user/logo.png`. List them with the
+`assets [filter]` command (e.g. `assets chevron`, `assets user`) or
+`GET /assets`; copying a file into the drop folder makes it available
+immediately, and the editor's "📂 Choose an asset…" picker uploads through
+`POST /assets/upload` (name collisions get a `_2` suffix automatically).
+
 ## Hierarchy and grouping
 
 - `window` is a root container. At least one root must remain.
@@ -137,12 +147,14 @@ exact name, or an unambiguous name prefix.
 
 ```text
 help
+new canvas <w> <h>
+assets [filter]
 tree [root] [all]
 list [root] [all]
 inspect <element>
 selection
 ui <hide|show|toggle>
-add <widget> [into <container>]
+add <widget> [into <container>] [with <prop> <value> …]
 add rect [x y w h] [into <container>]
 add ellipse [x y w h] [into <container>]
 add window empty [gtk4|kde] [w] [h] [name]
@@ -153,8 +165,18 @@ move <element> into <container> [slot]
 resize <element> <w> <h>
 del <element>
 copy <element> [count]
+cut <element>
+paste
 rename <element> <new name>
-select <element>
+select <element> [<element> …]
+select add <element>
+select none
+front <element>
+back <element>
+group [name]
+style copy <element>
+style apply [<element> …]
+defaults <element> [gtk4|kde]
 arrange <container>
 make-widget [name]
 enter <composite>
@@ -162,6 +184,13 @@ exit
 ungroup <composite|section>
 theme <GTK light|GTK dark|KDE light|KDE dark>
 ```
+
+`select` with several references builds a multi-selection (quote names that
+contain spaces); `group` wraps the selection in a Section; `front`/`back`
+change z-order; `cut`/`paste` move whole subtrees through the clipboard;
+`style copy`/`style apply` transfer an element's visual style; `defaults`
+reapplies the documented toolkit metrics and registry style to a subtree
+without changing text, names, state, or Window dimensions.
 
 When the local editor is open on port 8765, submit the same commands without
 mouse or keyboard simulation:
@@ -171,6 +200,24 @@ pixelruller-command 'select "Apply changes"'
 pixelruller-command 'tree "AppLocker Settings Compact" all'
 pixelruller-command 'ui hide'
 ```
+
+For bulk construction, pass `-` to read one command per stdin line; the whole
+batch is queued together and executes at engine speed (about 50 commands per
+second), printing one ✓/✗ result line per command:
+
+```text
+pixelruller-command - <<'EOF'
+new canvas 1400 900
+add window empty gtk4 1200 760 Settings
+add section into Settings with name Sidebar layout vertical gap 2 sizeModeX fixed w 300 sizeModeY fill
+add label into Sidebar with name "Sidebar title" text Settings grow 1 alignH center
+EOF
+```
+
+`add … with` accepts any `set`-valid property plus `name` and `slot`; pairs are
+validated before the element is created, so a bad pair adds nothing. The `add`
+result carries the new element's `id` and final `name` in its `data` field —
+use those for follow-up commands instead of parsing the message text.
 
 `tree` reports hierarchy, ids, slots, geometry, fill/stroke, visibility, managed
 versus fixed layout, and marks the current selection with `▶`. `inspect` returns
@@ -226,7 +273,16 @@ margin, padding
 
 Widget-specific fields include `widget`, `toolkit`, `layout`, `align`, `gap`,
 `cols`, `wrap`, `overflow`, `checked`, `on`, `value`, `active`, `controls`, icon
-fields, scroll fields, and window variant metadata. Compare revisions by `id`,
+fields, scroll fields, and window variant metadata. Visual-fidelity fields:
+`strokeStyle` (`solid|dashed`), per-side `borderSides.{t,r,b,l}` booleans
+(GNOME row dividers = bottom-only), caption-in-border via
+`captionMode border` + `captionSide top|bottom` + `captionAlign
+left|center|right` (exports as a legend, maps to GtkFrame/QGroupBox),
+`bold`/`italic`/`fontFamily`, `shadow`, and `showText` (`false` hides a
+widget's label and its placeholder fallback without deleting the stored text). Declarative UI behavior on
+controls: `action` (`toggle|show|hide|switch`) + `target` — `switch` shows the
+target section and hides its sibling sections; it works on canvas clicks and
+in the exported HTML runtime. Keep real application logic in code. Compare revisions by `id`,
 `name`, `parent`, and `slot`, not only by computed coordinates.
 
 JSON is the canonical editable format. Nested XML, flow text, PNG, and runnable
@@ -255,6 +311,12 @@ Treat these as build constraints:
   explanation in a nearby title/subtitle rather than squeezing it into a button.
 - Use a switch for immediate settings and a checkbox when changes wait for an
   Apply/OK action. Do not use a switch as a decorative status marker.
+- When a switchable row has additional configuration, follow the GNOME Settings
+  pattern: place a round flat gear `toolbutton` (⚙, icon-only, no fill/border)
+  immediately before the switch, so all switches stay aligned at the row's
+  trailing edge. The gear opens the
+  row's detail dialog or subpage. Do not add a separate text button such as
+  `Edit …` inside the card for the same purpose.
 - Treat every switch as three theme roles: a neutral **thumb**, a neutral
   **off track**, and an accent/highlight **on track**. The thumb never takes
   the track's state color; the track communicates off versus on.
@@ -305,12 +367,78 @@ Sources:
 See `libraries.md` in the project for the full derived widget metrics and source
 notes.
 
+## Theme-following colours (design hex → real app code)
+
+The canvas palettes above give every accent-role element a concrete hex (e.g. the
+GTK-light accent `#3584e4`) so the mockup reads faithfully. **When you generate
+the real application code, do not emit those accent hexes.** Map each colour to a
+theme token or style class instead, so the built app follows whatever accent and
+light/dark the user has chosen (blue, pink, teal…) — the same "no hardcoded
+colours, no CSS fighting the theme" rule the native example apps already follow.
+
+Which colours to translate, and which to keep:
+
+- **Translate** anything on an *accent role* (primary buttons, the on-track of a
+  switch, progress fill, a drop-zone's border/text, links/accent text, selection).
+- **Keep the design hex** only for *semantic status* tints (success/warning/error)
+  and neutral surfaces where the theme has no matching token — and even then
+  prefer a translucent tint (`alpha(#hex, 0.16)`) so it survives dark mode.
+
+### GTK 4 / GNOME
+
+Prefer built-in **style classes** over colour references — they already carry the
+theme accent and its correct foreground:
+
+| Design element | Emit (class / behaviour) — not a hex |
+|---|---|
+| Primary / accent button | `.suggested-action` |
+| Destructive button | `.destructive-action` |
+| Card / surface panel | `.card` |
+| Big title | `.title-1` … `.title-4` |
+| Subtitle / caption / status text | `.dim-label` |
+| Section heading | `.heading` |
+| Progress bar fill | nothing — `Gtk.ProgressBar` fills in the theme accent automatically |
+| Rounded/pill button | add `.pill` |
+
+When custom CSS genuinely needs the accent colour (a dashed drop-zone border,
+accent-coloured text on a tinted panel), reference the classic named colour
+**`@theme_selected_bg_color`** (accent/selection background) and
+**`@theme_selected_fg_color`** (text on it).
+
+> ⚠️ Do **not** use `@accent_bg_color` / `@accent_color`. Those are
+> libadwaita-only names; stock GTK themes such as **Mint-Y** do not define them,
+> so the reference silently fails in an app-level `CssProvider` and the element
+> renders faint or default. `Gtk.StyleContext.lookup_color("accent_bg_color")`
+> also returns *not found* on those themes. `@theme_selected_bg_color` is defined
+> by essentially every GTK theme and is the reliable choice.
+
+Keep any custom CSS to **geometry only** — `border-radius`, `padding`,
+`min-height`. Load it at `GTK_STYLE_PROVIDER_PRIORITY_APPLICATION` so it layers
+over the theme without overriding its colours.
+
+### KDE / Kirigami / Breeze
+
+Use theme roles, never hex: `Kirigami.Theme.highlightColor` for the accent
+(buttons' checked/selection state, progress, drop-zone border),
+`Kirigami.Theme.textColor` / `Kirigami.Theme.backgroundColor` for content, and
+the native controls (`Button` with a highlighted role, `Kirigami.Card`) so the
+Breeze accent and colour scheme apply automatically.
+
+### Worked example — the PDFExtractor design
+
+The `PDFExtractorUI.json` mockup used `#356fe0` for the Extract/Browse buttons and
+a blue drop-zone. The generated GTK 4 code emits **no** blues: the buttons get
+`.suggested-action`, the progress bar is left unstyled, and the drop-zone's dashed
+border and label use `@theme_selected_bg_color`. Switching the desktop theme from
+blue to pink recolours the whole app with zero code changes.
+
 ## Human and AI workflow
 
 Before editing, read this guide, the project README/Map, the canonical JSON, and
 the target application's existing code. Then:
 
-1. Open the canonical design through Load or `?design=filename.json`.
+1. Open the canonical design through Load or `?design=filename.json`, or start
+   a fresh design from the terminal with `new canvas <w> <h>`.
 2. Inspect names/hierarchy with `tree`; use commands for selection, property
    edits, movement, re-parenting, grouping, and arranging whenever possible.
    Keep pointer-driven editing for cases the command surface cannot express.

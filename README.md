@@ -109,6 +109,41 @@ pixelruller-command 'ui hide'   # canvas-only command focus
 pixelruller-command 'ui show'
 ```
 
+The command grammar covers the full editing surface — one shared verb set for
+the in-app command bar, the CLI, and an AI:
+
+```text
+new canvas <w> <h>                      start a design from the terminal
+add <kind> [into <c>] [with <p> <v> …]  create a named, styled widget in one line
+set <el> <prop>[.<side>] <value>        edit any validated property
+move · resize · del · copy · cut · paste · rename · front · back
+select <el> [<el> …] · select add <el> · select none
+group [name] · make-widget [name] · enter · exit · ungroup
+style copy <el> · style apply [<el> …]  copy a look between elements
+defaults <el> [gtk4|kde]                reapply toolkit metrics to a subtree
+theme <name> · arrange <c> · tree · inspect <el> · selection · ui · help
+```
+
+`add … with` takes `<property> <value>` pairs (any `set`-valid property plus
+`name` and `slot`), validated before the element is created; its result returns
+the new element's id. For bulk construction pass `-` to read one command per
+line from stdin — the batch queues together and executes at engine speed
+(~50 commands/s), printing one ✓/✗ line per command:
+
+```bash
+pixelruller-command - <<'EOF'
+new canvas 1400 900
+add window empty gtk4 1200 760 Settings
+add section into Settings with name Sidebar layout vertical sizeModeX fixed w 300 sizeModeY fill
+add label into Sidebar with name "Sidebar title" text Settings grow 1 alignH center
+EOF
+```
+
+A complete GNOME Control Center mockup (77 widgets) builds this way in under
+2 seconds — see `web/GnomeSettingsUI.json`, loadable via
+`http://127.0.0.1:8765/?design=GnomeSettingsUI.json` (add `&preview=html` for
+the generated runnable page).
+
 On launch you pick a **start mode**:
 
 - **📸 Screenshot** — capture the desktop to measure or redline over.

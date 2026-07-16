@@ -48,6 +48,35 @@ def main():
     base = f"http://127.0.0.1:{args.port}"
     command = " ".join(args.command).strip()
 
+    if command == "-":
+        # Batch mode: one command per stdin line, queued together, results in order.
+        commands = [line.strip() for line in sys.stdin if line.strip()]
+        if not commands:
+            parser.error("no commands on stdin")
+        try:
+            status, queued = request_json(base + "/api/commands", payload={"commands": commands})
+        except OSError as exc:
+            parser.error(f"cannot reach PixelRuller on port {args.port}: {exc}")
+        if status != 202:
+            parser.error(queued.get("error", f"server returned HTTP {status}"))
+        deadline = time.monotonic() + max(0.1, args.timeout)
+        exit_code = 0
+        for cmd_text, item_id in zip(commands, queued["ids"]):
+            url = base + "/api/commands/result?" + urllib.parse.urlencode({"id": item_id})
+            while True:
+                status, response = request_json(url)
+                if status == 200 and response.get("status") == "complete":
+                    result = response.get("result", {})
+                    mark = "✓" if result.get("ok") else "✗"
+                    print(f"{mark} {cmd_text} → {result.get('msg', '')}")
+                    if not result.get("ok"):
+                        exit_code = 1
+                    break
+                if time.monotonic() > deadline:
+                    parser.error(f"timed out waiting for: {cmd_text}")
+                time.sleep(0.05)
+        return exit_code
+
     try:
         status, queued = request_json(base + "/api/commands", payload={"command": command})
     except OSError as exc:
