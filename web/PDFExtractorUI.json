@@ -12,6 +12,72 @@
     "on": true,
     "spacing_px": 50
   },
+  "aiTheme": {
+    "README": "Instructions for AI code generation. This mockup paints accent-role elements with concrete hexes (below) so the design reads faithfully. When you generate the REAL application code, DO NOT emit those accent hexes — map each to the theme token / style class so the built app follows whatever accent and light/dark the user has chosen. It also encodes the native layout & UX patterns under each toolkit's 'patterns' — reproduce those, not just the colours. Same 'no hardcoded colours, no CSS fighting the theme, follow the platform's conventions' rule the native example apps follow.",
+    "translate": "Anything on an ACCENT role: primary/suggested buttons, a switch's on-track, progress fill, a drop-zone's border/text, links/accent text, selection.",
+    "keepAsHex": "Only SEMANTIC STATUS tints (success/warning/error) and neutral surfaces with no matching token — and even then prefer a translucent tint, e.g. alpha(#hex, 0.16), so it survives dark mode.",
+    "gtk4": {
+      "note": "Prefer built-in STYLE CLASSES over colour references — they already carry the theme accent and its correct foreground.",
+      "styleClasses": {
+        "primary / accent button": ".suggested-action",
+        "destructive button": ".destructive-action",
+        "card / surface panel": ".card",
+        "big title": ".title-1 … .title-4",
+        "subtitle / caption / status text": ".dim-label",
+        "section heading": ".heading",
+        "rounded / pill button": "add .pill",
+        "progress bar fill": "nothing — Gtk.ProgressBar fills in the theme accent automatically"
+      },
+      "accentColorReference": "When custom CSS genuinely needs the accent colour (dashed drop-zone border, accent text on a tinted panel), use @theme_selected_bg_color (accent/selection bg) and @theme_selected_fg_color (text on it).",
+      "avoid": "Do NOT use @accent_bg_color / @accent_color — those are libadwaita-only names; stock GTK themes such as Mint-Y do not define them, so the reference silently fails in an app-level CssProvider and the element renders faint or default. @theme_selected_bg_color is defined by essentially every GTK theme.",
+      "customCss": "Keep custom CSS to GEOMETRY only — border-radius, padding, min-height. Load it at GTK_STYLE_PROVIDER_PRIORITY_APPLICATION so it layers over the theme without overriding its colours.",
+      "patterns": {
+        "note": "GNOME/GTK layout & UX conventions this design uses — reproduce them, do not invent a flat wall of controls. Map to GtkFrame / Adw.PreferencesGroup / Adw.ActionRow / GtkSwitch in the real app.",
+        "rowGearForSettings": "When a switch/toggle governs something that has its OWN further settings, place a round FLAT gear toolbutton (⚙, icon-only, no fill, no border) immediately BEFORE the switch. It opens the detail dialog/subpage for exactly the thing that switch controls, and keeps every switch aligned at the row's trailing edge. Do NOT add a separate 'Edit…' text button for this — the gear IS the affordance. (Maps to a flat GtkButton with an icon, or Adw.ActionRow with a gear suffix + the switch.)",
+        "borderedSections": "Group related rows inside a BORDERED section card — the GNOME boxed list (.boxed-list) or .card: one rounded outer border, rows separated by BOTTOM-ONLY 1px dividers (borderSides bottom only). Never leave switches/controls floating on the bare window background.",
+        "titlesAndSubtitles": "Every section/group carries a heading TITLE and a SUBTITLE/description that explains what it does, and each row can carry its own title plus a dim subtitle. The UI/UX explanation lives in these titles/subtitles (.heading / .title-* / .dim-label / Adw group title+description), NEVER crammed into a control's label. This is what makes the interface self-explaining.",
+        "rowLayout": "A settings row reads left→right: leading title (+ optional dim subtitle) on the left, a growing spacer, then the trailing control cluster (optional gear, then the switch/value/chevron). Keep the trailing controls right-aligned and consistent across every row.",
+        "contentNavigation": "To separate content into logical top-level sections, use a SIDEBAR — a vertical list of destinations — driving a page STACK, NOT a tab bar. Each sidebar item switches the visible page and hides its siblings (the nav button's action=switch + target, with one section per page inside a 'Page stack'). Pin low-priority items (version, About) to the bottom of the sidebar with a growing spacer above them. Maps to Adw.NavigationSplitView / GtkStackSidebar + GtkStack. Reserve TABS for peer documents/views WITHIN a page, never for the app's top-level sections.",
+        "commitActionBar": "When a screen batches changes behind Apply/OK (checkboxes, not live switches), give it a bottom action bar: a growing spacer pushes the buttons to the trailing edge, a secondary/destructive button (Revert/Cancel) sits left of the primary (Apply). Equal heights, .suggested-action on the primary and .destructive-action where the action discards work.",
+        "modalDialogs": "A task that must be completed or dismissed before continuing (enroll, rename, enter a PIN, confirm) is a MODAL DIALOG that dims/darkens the rest of the window behind a scrim — NOT a separate top-level window and NOT an inline panel. The dimmed backdrop signals 'finish this or close it'. Structure: title, body, then a bottom action bar with Cancel on the leading edge and the primary action trailing. Maps to Adw.Dialog / Adw.MessageDialog (or a modal GtkWindow set transient-for its parent), which draw the scrim for you. (In a mockup these are separate window shapes because the canvas has no overlay layer — implement them as a modal over the parent, not a real second window.)",
+        "responsiveVariants": "Ship compact + regular variants of a screen (this design carries both). On narrow widths the sidebar collapses from a permanent column into a toggle/drawer, and rows reflow — content stays reachable, nothing is clipped. Maps to Adw breakpoints / an Adw.OverlaySplitView (or GtkStackSidebar) that folds. Use the design's hideBelow/showBelow to express which elements swap at a breakpoint.",
+        "headerBackNavigation": "Drilling into a SUBPAGE adds a Back button at the LEADING edge of the header bar to pop to the parent — this complements the sidebar, which switches top-level sections. Maps to Adw.NavigationView push/pop with its automatic back button. Sidebar = lateral top-level moves; header Back = depth within a section.",
+        "statusTinting": "Colour-code list/row items by TYPE or STATE so the category is readable at a glance (the PDFExtractor design tints each file row by processing state: ready/fast = a translucent SUCCESS-green tint fill with a green border, green text and a ⚡ glyph; needs-OCR/slow = a WARNING-amber tint with amber border+text and a 🐌 glyph). Rules: (1) keep tint, border and text in the SAME hue family; (2) draw from the semantic families success/warning/error as a translucent tint (alpha ~0.12–0.16) so it survives dark mode; (3) ALWAYS pair the colour with a glyph AND text — never colour alone, so colour-blind users can still read the state. Map to a .card row with a per-state CSS class tinting @success_color / @warning_color / @error_color, or an Adw row with a status icon.",
+        "contentInspectorSplit": "For a work area plus its options, use a horizontal SPLIT: the primary content pane on the leading side (wider, ~65%) and a narrower settings/inspector pane trailing (~35%), each a white card. This is content + its settings side-by-side, NOT top-level navigation (that's the sidebar). Maps to Adw.OverlaySplitView or a GtkPaned holding two GtkFrame cards.",
+        "dropZone": "A drag target is an accent-tinted panel: a translucent accent fill, an accent (often dashed) border, accent-coloured instructional text centred inside, AND an explicit fallback button ('…or click Add files') — never drag-only, since drag isn't discoverable or accessible. Use @theme_selected_bg_color for the border/text (see the colour-translation table); keep custom CSS geometry-only.",
+        "surfaceHierarchy": "The 'clean' look comes from a clear surface stack: a softly TINTED window/workspace background (not pure white), WHITE content cards raised on it with a soft 1px neutral border and a generous corner radius (~14), and roomy padding (20–28px) inside cards with comfortable gaps between rows. Don't pack controls edge-to-edge — the whitespace is doing the work.",
+        "roundedCorners": "Rounded corners follow a consistent SCALE by role, not one radius everywhere: window ≈12, cards/sections ≈12–14, controls (buttons, textboxes, dropdowns, split panes) ≈8, chips/list rows ≈6, progress bars & checkboxes ≈4, and toggles/pills fully rounded (radius = height/2). NESTING RULE: an inner element's radius is ≤ its container's, and inset by roughly the padding, so a child never looks rounder than the card holding it. Reuse the SAME radius for the SAME role across the whole UI. In real code these are geometry-only border-radius values (allowed in custom CSS) — pick values that sit with the theme's own rounding rather than fighting it.",
+        "actionMicrocopy": "Make the UI self-narrating: the primary button states the concrete effect INCLUDING a count ('Extract 3 PDFs', not 'Extract'); a status line near it gives readiness + an estimate ('Ready · estimated OCR time 18 minutes'); summary lines pack facts with middot separators ('3 files · 248 pages · 2 fast · 1 needs OCR'). Generate these strings from real state in code.",
+        "reference": "This is exactly the pattern the AppLocker, GNOME Settings and PDFExtractor example designs follow — treat them as the reference for GTK/GNOME targets."
+      }
+    },
+    "kde": {
+      "note": "Use theme roles, never hex.",
+      "roles": {
+        "accent": "Kirigami.Theme.highlightColor  (buttons' checked/selection state, progress, drop-zone border)",
+        "content": "Kirigami.Theme.textColor / Kirigami.Theme.backgroundColor",
+        "controls": "native controls (Button with a highlighted role, Kirigami.Card) so the Breeze accent and colour scheme apply automatically"
+      },
+      "patterns": {
+        "note": "KDE/Kirigami equivalents of the same conventions.",
+        "rowConfigForSettings": "For a switch row that has its own settings, put a flat icon Button (a 'configure'/gear icon) before the Switch so switches stay aligned at the trailing edge; it opens that row's config page/dialog.",
+        "groupedForm": "Lay related controls out in a Kirigami.FormLayout or inside a Kirigami.Card with a visible boundary; give each group a section header and a descriptive line rather than floating controls on the page.",
+        "titlesAndSubtitles": "Each group has a header title and a description; rows carry a label plus secondary/dim explanatory text so the UI explains itself.",
+        "contentNavigation": "Separate top-level sections with a sidebar/drawer + page stack (Kirigami.PageRow / Kirigami.GlobalDrawer), not a TabBar; keep tabs for peer views within a page. Commit-style screens get a footer action bar with the primary button at the trailing edge.",
+        "modalDialogs": "Blocking tasks are a modal Kirigami.Dialog / QML Dialog with its dimmed overlay, not a second window and not an inline panel; Cancel leading, primary trailing.",
+        "responsiveVariants": "Provide compact + regular layouts; on narrow widths the sidebar folds into a Kirigami drawer and rows reflow rather than clip.",
+        "headerBackNavigation": "Subpages get a Back button via Kirigami.PageRow pop; the drawer handles lateral top-level moves, Back handles depth.",
+        "statusTinting": "Tint rows by state with Kirigami.Theme positive/neutral/negative background colours plus a matching icon and text; never colour alone.",
+        "contentInspectorSplit": "Content + options = a two-pane split (a RowLayout of two Kirigami.Card, or ColumnView), primary wider and inspector narrower — not navigation.",
+        "dropZone": "A drag target is an accent-tinted area (Kirigami.Theme.highlightColor border/text) with a click-to-add fallback button; never drag-only.",
+        "surfaceHierarchy": "Tinted page background, raised Kirigami.Card content with soft borders and generous padding; let whitespace carry the layout.",
+        "roundedCorners": "Breeze uses a tighter radius scale — cards/windows ≈4–6, controls ≈3–4, small indicators ≈3, pills fully rounded; keep the SAME radius per role and never let a child look rounder than its container.",
+        "actionMicrocopy": "Primary button states the concrete effect + count; a status line gives readiness/estimate; summaries use middot-separated facts."
+      }
+    },
+    "switches": "Every switch is three theme roles: a neutral thumb, a neutral off-track, and an accent on-track. The thumb never takes the track's state colour; the track communicates off vs on.",
+    "icons": "Use the PROVIDED built-in SVGs for icons — list them with the `assets` command or GET /assets before inventing anything (the set is broad: arrows, chevrons, gear, search, files, lock/unlock, face-id, media, brush, trash, warning, users, and more). When a needed icon genuinely isn't in the set, AUTHOR A NEW ONE in the SAME visual style as the provided icons rather than pasting a mismatched third-party icon or dropping an emoji where a line icon belongs. House style: viewBox='0 0 24 24', fill:none, a single stroke using currentColor (so it follows the theme text/accent), stroke-width 2, stroke-linecap and stroke-linejoin round. Drop new SVGs into the user assets folder (~Pictures/PixelRuller/assets) and reference them as user/<file>. Keep every icon in the UI one coherent family — consistent stroke weight, corner rounding, and metaphor."
+  },
   "count": 32,
   "shapes": [
     {
