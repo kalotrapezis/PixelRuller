@@ -4,7 +4,7 @@
 
 AI collaborators should read [`AI_SKILL.md`](AI_SKILL.md) before creating, editing, or implementing a PixelRuller UI design.
 
-Current release: **v0.0.4**
+Current release: **v0.0.8**
 
 A pixel-measuring tool for counting screen distances, positions, and areas.
 It grabs a full screenshot, overlays a ruler grid, and lets you drop points or
@@ -27,6 +27,26 @@ design happens on an HTML canvas in your browser.
 ### Human and AI co-design the same interface
 
 ![Codex and PixelRuller working side by side on a PDFExtractor interface](Screenshots/AI%20codesign.png)
+
+### Demo mode — use the design like a running app
+
+Press **▶ Demo** (or run `demo on`) and the entire editor disappears: the
+design fills the screen, plain clicks fire the interactions you declared,
+the wheel scrolls scroll containers, and a floating **← ■ Stop →** bar steps
+the camera between windows (Ctrl+←/Ctrl+→) or returns you to editing (Esc).
+
+![Demo mode running the VOICE design, hamburger menu open over the clipboard page](Screenshots/Demo1.png)
+
+Modals and menus are authored *next to* their window on the canvas so every
+surface stays inspectable while editing — in demo mode they appear where they
+really belong, above the window on a scrim, and dismiss by clicking outside.
+
+![An About dialog and hamburger menu floating over the VOICE window in demo mode](Screenshots/Demo-Modal.png)
+
+Windows opened through a button's action become camera destinations, so a
+floating mini-window can be inspected at any zoom without leaving the demo.
+
+![The VOICE mini recording bar zoomed in during a demo session](Screenshots/Demo2.png)
 
 ### Proof of concept: PDFExtractor redesign
 
@@ -122,7 +142,16 @@ group [name] · make-widget [name] · enter · exit · ungroup
 style copy <el> · style apply [<el> …]  copy a look between elements
 defaults <el> [gtk4|kde]                reapply toolkit metrics to a subtree
 theme <name> · arrange <c> · tree · inspect <el> · selection · ui · help
+demo <on|off|toggle>                    full-screen demo mode
+click <el> · show <el> · hide <el>      fire/drive the declared interactions
+focus <window> · scroll <c> <y> [x]     frame a window · set scroll offsets
+note <list|add "text" [el …]|del <id>>  designer↔AI notes stored in the JSON
 ```
+
+The demo-testing verbs (`click`, `show`, `hide`, `focus`, `scroll`) work in
+or out of demo mode, so an AI can press the design's buttons, open its
+modals, scroll its lists, and verify the result — the same loop a human
+runs by hand in demo mode.
 
 `add … with` takes `<property> <value>` pairs (any `set`-valid property plus
 `name` and `slot`), validated before the element is created; its result returns
@@ -216,8 +245,10 @@ pointing tools.
     **▢ Ungroup** (`Ctrl+Shift+G`) removes a selected Section, keeping its
     contents.
 - **Ctrl+Click or right-click** an element — opens a floating **properties
-  panel** (single column) organized into collapsible sections (click a section
-  header to fold it):
+  panel** and, on Ctrl+Click, copies the element's `name (id)` to the
+  clipboard (a "Copied: …" toast confirms) so it can be pasted straight into
+  a command. The panel is a single column organized into collapsible sections
+  (click a section header to fold it):
   - **Position & size** — X, Y, W, H, **Depth** (z-order, with **▲ Front** /
     **▼ Back**), and a **Fixed position** toggle (📌 on its label).
   - **Appearance** — Filled on/off, Fill & Stroke colors, Border-width slider,
