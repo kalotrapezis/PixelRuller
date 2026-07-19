@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.0.8 — 2026-07-19
+
+- **Full-screen demo mode**: entering demo hides the entire editor chrome —
+  the design is the screen. A floating pill bar at the bottom carries
+  ← / ■ Stop / → : the arrows step the camera between windows (also
+  Ctrl+← / Ctrl+→), Stop (or Esc) returns to edit mode. Entering demo
+  auto-frames the main (largest visible) window; secondary windows are
+  reached through flow connections or the arrows.
+- **Demo scrolling fixed**: any visible scroll container with overflowing
+  content now scrolls under the wheel — `interactionEnabled: false` no
+  longer blocks it, and a nested non-scrollable section no longer swallows
+  the wheel (which used to fall through to canvas zoom).
+- **Demo-testing commands** for the command bar / `pixelruller-command`,
+  so an AI can exercise a design's behavior and verify it: `click <el>`
+  (fire the interaction exactly like a demo click), `show <el>` /
+  `hide <el>` (runtime visibility), `focus <window>` (frame a window),
+  `scroll <container> <y> [x]` (set offsets; reports clamped position and
+  maxima).
+- **Ctrl+Click copies "name (id)"** of the element to the clipboard with a
+  "Copied: …" toast, alongside opening its properties — a reliable
+  replacement for the 5-second hover-copy.
+- **Skill/AI guide**: new non-negotiable rule — modals, dialogs, and
+  floating windows are placed NEXT TO their window on the canvas, never on
+  top of the design, so everything stays inspectable in edit mode; demo
+  mode shows the real overlay behavior. Demo-testing verbs documented and
+  `pixelruller.skill` rebuilt.
+
 ## v0.0.7 — 2026-07-19
 
 - **Modal sections**: `set <section> modal true` floats a section above its
