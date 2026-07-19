@@ -85,7 +85,8 @@ widgets express an implementation dependency; they do not implement storage.
 Assets: buttons/tool buttons/menu items/textboxes take an `icon`; the `image`
 widget takes a `src` that letterboxes inside its frame. Both accept built-in
 `SVGs/<name>.svg` entries or the user's own files dropped into
-`~Pictures/PixelRuller/assets/` (PNG/SVG/JPG/WebP), referenced as
+the `assets/` folder inside the output dir — `<app>/output/assets/`, or
+`~/PixelRuller/output/assets/` on read-only installs (PNG/SVG/JPG/WebP), referenced as
 `user/<file>` — e.g. `set Image src user/logo.png`. List them with the
 `assets [filter]` command (e.g. `assets chevron`, `assets user`) or
 `GET /assets`; copying a file into the drop folder makes it available
@@ -100,7 +101,7 @@ there, **author a new SVG in the same house style** rather than pasting a
 mismatched third-party icon or dropping an emoji where a line icon belongs:
 `viewBox="0 0 24 24"`, `fill:none`, a single stroke in `currentColor` (so it
 follows the theme), `stroke-width="2"`, round `stroke-linecap`/`stroke-linejoin`.
-Drop it into `~Pictures/PixelRuller/assets/` and reference it as `user/<file>`.
+Drop it into the output dir's `assets/` folder and reference it as `user/<file>`.
 Keep every icon in the UI one coherent family — consistent weight, rounding, and
 metaphor.
 
@@ -293,8 +294,20 @@ left|center|right` (exports as a legend, maps to GtkFrame/QGroupBox),
 `bold`/`italic`/`fontFamily`, `shadow`, and `showText` (`false` hides a
 widget's label and its placeholder fallback without deleting the stored text). Declarative UI behavior on
 controls: `action` (`toggle|show|hide|switch`) + `target` — `switch` shows the
-target section and hides its sibling sections; it works on canvas clicks and
-in the exported HTML runtime. Keep real application logic in code. Compare revisions by `id`,
+target section and hides its sibling sections; in the editor these fire on
+**Shift+Click** (a plain click only selects) and they work in the exported
+HTML runtime. A section with `modal true` floats above its whole window on a
+dark scrim when visible — use it for hamburger menus and gear/settings dialogs
+instead of a second window. Give it `anchor <element>` to pin it under its
+trigger (e.g. the hamburger button); with no anchor it centres in the window.
+Shift+Click outside an open modal dismisses it. In **Demo mode** (`demo on|off`,
+or the ▶ Demo button) plain clicks fire interactions, controls flip their own
+state (toggle/checkbox/radio/slider/tabs), an `action` whose target is another
+window pans the camera there (flow navigation), and nothing is editable — use
+it to click through a prototype. Designs also carry **notes**: `doc.notes`
+in the JSON, each with element-id tags — read them with `note list` (they often
+hold the designer's intent for you) and leave notes with
+`note add "text" [element …]`. Keep real application logic in code. Compare revisions by `id`,
 `name`, `parent`, and `slot`, not only by computed coordinates.
 
 JSON is the canonical editable format. Nested XML, flow text, PNG, and runnable

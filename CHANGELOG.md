@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.0.7 — 2026-07-19
+
+- **Modal sections**: `set <section> modal true` floats a section above its
+  whole window on a dark scrim — hamburger menus and gear/settings dialogs in
+  the same window's JSON instead of a fake second window. `anchor <element>`
+  pins it under its trigger; without an anchor it centres. Round-trips through
+  the design JSON, hit-tests above everything while open, and dismisses by
+  clicking outside.
+- **Demo mode** (▶ Demo button / `demo on|off|toggle`): use the design like a
+  running app — plain clicks fire `action`/`target` interactions, controls flip
+  their own state (toggle `on`, checkbox `checked`, radio with sibling-group
+  clearing, slider `value` from the click position, tabs switch), wheel scrolls
+  scroll containers, the scrim dismisses modals, and an action targeting
+  another window pans the camera there (flow navigation). Nothing can be
+  selected, moved, resized, deleted, or re-parented.
+- **Edit-mode interactions moved to Shift+Click** — a plain click only selects,
+  so editing never fires interactions by accident. Shift+wheel scrolls a scroll
+  container; Shift+Click outside an open modal dismisses it.
+- **Design notes**: `doc.notes` in the JSON — free-text notes tagged with
+  element ids. 🗒 Notes popup above the bottom bar (tag chips select the
+  element), and `note list` / `note add "text" [el …]` / `note del <id>` give
+  an AI the same access. Notes are the designer↔AI intent channel.
+- **Elements tree**: collapsible containers (▾/▸ carets), a search bar that
+  auto-expands to hits, and precise drop zones when dragging (row top = before,
+  bottom = after, middle of a container = into it) — exact placement even when
+  canvas elements overlap.
+- **Hover-copy**: hovering a selected widget for 5 s copies "name (id)" to the
+  clipboard for use in commands.
+- **Flow export grew connections**: a CONNECTIONS section (every
+  `action`/`target` and hide/show binding as an edge, classified flow → window /
+  modal dialog / in-window) plus the design NOTES.
+- **Hit-testing accuracy**: exact containment now wins before the ±8px screen
+  tolerance, so clicks at low zoom can't land on the neighbouring row.
+- **Output moves to `output/`** in the app folder (read-only installs fall back
+  to `~/PixelRuller/output`, then the old Pictures/PixelRuller location). User
+  assets live in `<output>/assets`; move any existing files from
+  `~/Pictures/PixelRuller/assets` if you have them.
+
 ## v0.0.6 — 2026-07-17
 
 - Grow the embedded `aiTheme` template from a colour rule into a full design-cue

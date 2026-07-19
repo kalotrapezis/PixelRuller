@@ -121,6 +121,23 @@
         <div id="cmdHist" class="cmd-hist" hidden></div>
       </div>
     </div>
+    <div class="group only-canvas" id="runGroup">
+      <button id="demoToggle" title="Demo mode: use the UI (clicks fire actions, wheel scrolls) — editing is off">▶ Demo</button>
+      <button id="notesToggle" title="Design notes — tagged with element ids, saved in the JSON">🗒 Notes</button>
+    </div>
+  </div>
+
+  <div id="notesPanel" class="notes-panel only-canvas" hidden>
+    <div class="notes-head">
+      <span>Notes</span>
+      <button id="notesClose" title="Close" onclick="this.closest('#notesPanel').hidden = true; document.getElementById('notesToggle').classList.remove('active')">✕</button>
+    </div>
+    <div id="notesList" class="notes-list"></div>
+    <div class="notes-add">
+      <input id="noteTags" type="text" placeholder="tags: el_7, Hamburger…" spellcheck="false" autocomplete="off">
+      <input id="noteText" type="text" placeholder="note text — Enter adds" spellcheck="false" autocomplete="off">
+      <button id="noteAdd" title="Add note">＋</button>
+    </div>
   </div>
 
   <div id="library" class="library">
@@ -225,7 +242,8 @@
       </section>
       <section class="pp-sec" id="treeSec">
         <div class="pp-sec-head">Elements <span class="pp-caret">▾</span></div>
-        <div class="pp-sec-body pp-sec-flush" id="treeHost" title="Click: select · Drag: re-parent / reorder · ▲: bring to front"></div>
+        <input id="treeSearch" class="tree-search" type="search" placeholder="Search elements…" autocomplete="off">
+        <div class="pp-sec-body pp-sec-flush" id="treeHost" title="Click: select · Drag: re-parent / reorder (top edge: before · bottom: after · middle: into) · ▲: bring to front"></div>
       </section>
   <div id="propPanel" class="proppanel empty">
     <div class="pp-head">

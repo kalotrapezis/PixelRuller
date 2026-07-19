@@ -33,7 +33,7 @@ WEB_DIR = os.path.join(ROOT, "web")
 ASSETS_DIR = os.path.join(ROOT, "Assets")
 SAVE_SUBDIR = "PixelRuller"
 APP_NAME = "PixelRuller"
-APP_VERSION = "0.0.6"
+APP_VERSION = "0.0.7"
 AI_SKILL_PATH = os.path.join(ROOT, "AI_SKILL.md")
 
 
@@ -137,6 +137,18 @@ def pictures_dir():
 
 
 def save_dir():
+    """Default output folder: `output/` next to the app (dev checkout). When
+    the app dir isn't writable (deb install under /opt), use ~/PixelRuller/output;
+    last resort is the old Pictures/PixelRuller location."""
+    home_base = os.path.join(os.path.expanduser("~"), SAVE_SUBDIR)
+    for base in (ROOT, home_base):
+        d = os.path.join(base, "output")
+        try:
+            os.makedirs(d, exist_ok=True)
+            if os.access(d, os.W_OK):
+                return d
+        except OSError:
+            continue
     d = os.path.join(pictures_dir(), SAVE_SUBDIR)
     os.makedirs(d, exist_ok=True)
     return d
