@@ -66,6 +66,11 @@ inside PixelRuller is a design command bar; its commands are not shell commands.
 8. Apply the selected toolkit's metrics before approving a design. Never remove
    internal control padding to make text fit; shorten the label, widen the
    control, or move secondary wording into a nearby title/subtitle.
+9. Place modals, dialogs, and floating windows NEXT TO the window they belong
+   to on the canvas — never on top of the design — so every surface stays fully
+   inspectable in edit mode. Their real overlay position is expressed through
+   actions/`modal` fields and appears correctly in demo mode, where behavior is
+   tested (`demo on`, `click`, `show`/`hide`, `focus`, `scroll`).
 
 ## Widget catalogue
 
@@ -196,7 +201,26 @@ enter <composite>
 exit
 ungroup <composite|section>
 theme <GTK light|GTK dark|KDE light|KDE dark>
+demo <on|off|toggle>
+click <element>
+show <element>
+hide <element>
+focus <window>
+scroll <container> <y> [x]
+note <list|add "text" [el …]|del <id>>
 ```
+
+Demo-testing verbs let an AI exercise a design's declared behavior without
+pointer simulation, in or out of demo mode: `click` fires an element's
+interaction exactly like a demo-mode click (toggles flip, radios group,
+actions show/hide their targets, a window target moves the camera);
+`show`/`hide` set runtime visibility directly; `focus` frames one window;
+`scroll` sets a scroll container's offsets and reports the clamped position
+and maxima. In demo mode the editor chrome is hidden and a floating bottom
+bar steps between windows (← / →, also Ctrl+←/Ctrl+→) or stops the demo
+(Stop button, also Esc). A typical verification loop: `demo on` →
+`click SettingsBtn` → screenshot via the browser surface (or `tree`/`inspect`
+for a text check) → `demo off`.
 
 `select` with several references builds a multi-selection (quote names that
 contain spaces); `group` wraps the selection in a Section; `front`/`back`

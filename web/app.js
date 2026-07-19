@@ -3003,11 +3003,36 @@ function setDemo(on) {
   if (state.demo) { clearSelection(); closeProps(); state.drag = null; toggleNotesPanel(false); }
   document.body.classList.toggle("demo", state.demo);
   document.getElementById("demoToggle")?.classList.toggle("active", state.demo);
+  const bar = document.getElementById("demoBar");
+  if (bar) bar.hidden = !state.demo;
   refreshTree();
+  resizeCanvas(); // the editor chrome collapses in demo, so the stage grew/shrank
   render();
   toast(state.demo ? "Demo mode — click to use the UI; editing is off" : "Edit mode");
+  // Entering demo: frame the main window (largest visible one) — secondary
+  // windows are reached through flow connections or the ← → demo bar arrows.
+  if (state.demo) {
+    const wins = demoWindows();
+    const main = wins.slice().sort((a, b) => b.w * b.h - a.w * a.h)[0];
+    if (main) { state.demoWin = wins.indexOf(main); focusWindow(main); }
+  }
 }
 document.getElementById("demoToggle")?.addEventListener("click", () => setDemo(!state.demo));
+
+// The windows a demo can step through, in stable document order.
+function demoWindows() {
+  return state.shapes.filter(s => isWindow(s) && responsiveVisible(s));
+}
+// Step the demo camera to the previous/next window (demo bar arrows, Ctrl+←/→).
+function demoStep(dir) {
+  const wins = demoWindows();
+  if (!wins.length) return;
+  state.demoWin = ((Number(state.demoWin) || 0) + dir + wins.length) % wins.length;
+  focusWindow(wins[state.demoWin]);
+}
+document.getElementById("demoPrev")?.addEventListener("click", () => demoStep(-1));
+document.getElementById("demoNext")?.addEventListener("click", () => demoStep(1));
+document.getElementById("demoStop")?.addEventListener("click", () => setDemo(false));
 
 // ----- Notes ---------------------------------------------------------------
 // Free-form design notes with element-id tags, saved inside the design JSON
@@ -3169,7 +3194,8 @@ const CMD_HELP =
   'front <el> · back <el> · style copy <el> · style apply [<el> …] · ' +
   'defaults <el> [gtk4|kde] · theme <GTK light|GTK dark|KDE light|KDE dark> · ' +
   'assets [filter] · tree [root] [all] · inspect <el> · selection · ui <hide|show|toggle> · ' +
-  'demo <on|off|toggle> · note <list|add "text" [el …]|del <id>> · list · help';
+  'demo <on|off|toggle> · click <el> · show <el> · hide <el> · focus <window> · ' +
+  'scroll <container> <y> [x] · note <list|add "text" [el …]|del <id>> · list · help';
 
 function runCommand(input) {
   const res = execCommand(input);
@@ -3257,6 +3283,37 @@ function execCommand(input) {
         if (!["on", "off", "toggle"].includes(m)) return fail("demo <on|off|toggle>");
         setDemo(m === "toggle" ? !state.demo : m === "on");
         return { ok: true, msg: `demo mode ${state.demo ? "on" : "off"}` };
+      }
+
+      // Demo-testing verbs: drive the design like a user would, from the
+      // command bar / CLI, so interactions can be exercised and verified
+      // without pointer coordinates.
+      case "click": {
+        const s = findShape(t[1] || "");
+        if (!s) return fail(`no element "${t[1] || ""}" — click <element>`);
+        if (!isActuatable(s)) return fail(`${s.name || s.id} has no interaction to fire`);
+        actuateWidget(s, { x: s.x + s.w / 2, y: s.y + s.h / 2 });
+        return done(`clicked ${s.name || s.id}`);
+      }
+      case "show": case "hide": {
+        const s = findShape(t[1] || "");
+        if (!s) return fail(`no element "${t[1] || ""}" — ${verb} <element>`);
+        s.runtimeVisible = verb === "show";
+        return done(`${s.name || s.id} ${verb === "show" ? "shown" : "hidden"}`);
+      }
+      case "focus": {
+        const s = findShape(t[1] || "");
+        if (!isWindow(s)) return fail(`focus <window> — "${t[1] || ""}" is not a window`);
+        focusWindow(s);
+        return { ok: true, msg: `focused ${s.name || s.id}` };
+      }
+      case "scroll": {
+        const s = findShape(t[1] || "");
+        if (!s || s.overflow !== "scroll") return fail(`scroll <container> <y> [x] — "${t[1] || ""}" is not a scroll container`);
+        relayout(); // make sure scrollMaxX/Y reflect current content
+        if (t[2] != null) s.scrollY = Math.max(0, Math.min(s.scrollMaxY || 0, Number(t[2]) || 0));
+        if (t[3] != null) s.scrollX = Math.max(0, Math.min(s.scrollMaxX || 0, Number(t[3]) || 0));
+        return done(`${s.name || s.id} scrolled to y=${s.scrollY || 0} x=${s.scrollX || 0} (max y=${s.scrollMaxY || 0} x=${s.scrollMaxX || 0})`);
       }
 
       case "note": case "notes": {
@@ -5784,10 +5841,15 @@ canvas.addEventListener("mousedown", (e) => {
       }
       return;
     }
-    // Ctrl/Cmd+Click opens the element properties panel (any mode).
+    // Ctrl/Cmd+Click copies the element's name + id and opens its properties.
     if (e.ctrlKey || e.metaKey) {
       const hit = hitTest(screenToImage(sx, sy));
       if (hit !== null && isElement(state.shapes[hit])) {
+        const s = state.shapes[hit];
+        const idText = s.name ? `${s.name} (${s.id})` : s.id;
+        navigator.clipboard?.writeText(idText)
+          .then(() => toast(`Copied: ${idText}`))
+          .catch(() => toast("Clipboard unavailable", true));
         selectOnly(hit);
         openProps(hit, e.clientX, e.clientY);
         render();
@@ -5931,10 +5993,11 @@ canvas.addEventListener("wheel", (e) => {
   const p = screenToImage(e.clientX - r.left, e.clientY - r.top);
   // Shift+wheel scrolls the design's scroll container under the cursor
   // (any wheel in Demo mode); a plain edit-mode wheel always zooms.
-  const scroller = (e.shiftKey || state.demo) ? state.shapes.filter(s => isContainer(s) && s.overflow === "scroll" && s.interactionEnabled && responsiveVisible(s) &&
+  const scroller = (e.shiftKey || state.demo) ? state.shapes.filter(s => isContainer(s) && s.overflow === "scroll" && responsiveVisible(s) &&
+    (s.scrollMaxX > 0 || s.scrollMaxY > 0) &&
     p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h)
     .sort((a, b) => a.w * a.h - b.w * b.h)[0] : null;
-  if (scroller && (scroller.scrollMaxX > 0 || scroller.scrollMaxY > 0)) {
+  if (scroller) {
     if (scroller.scrollMaxY > 0)
       scroller.scrollY = Math.max(0, Math.min(scroller.scrollMaxY, (Number(scroller.scrollY) || 0) + e.deltaY / state.view.scale));
     else scroller.scrollX = Math.max(0, Math.min(scroller.scrollMaxX, (Number(scroller.scrollX) || 0) + e.deltaY / state.view.scale));
@@ -5951,6 +6014,11 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.target.tagName === "INPUT") return;
+  // Demo mode: Ctrl+←/→ steps between windows, Escape leaves demo.
+  if (state.demo && (e.ctrlKey || e.metaKey) && ["ArrowLeft", "ArrowRight"].includes(e.key)) {
+    e.preventDefault(); demoStep(e.key === "ArrowRight" ? 1 : -1); return;
+  }
+  if (state.demo && e.key === "Escape") { e.preventDefault(); setDemo(false); return; }
   // Demo mode: block destructive/editing shortcuts (view keys still work).
   if (state.demo && (["Delete", "Backspace"].includes(e.key) ||
       ((e.ctrlKey || e.metaKey) && ["x", "v", "d", "g"].includes(e.key.toLowerCase())))) return;
