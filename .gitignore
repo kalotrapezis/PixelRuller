@@ -7,3 +7,6 @@ packaging/build/
 
 # Local-only native reference apps, never published.
 NativeAppsExamples_Dont pshThisToGITHUB/
+
+# Default save/output folder — user data, never committed.
+output/

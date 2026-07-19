@@ -421,6 +421,77 @@ body.mode-canvas.sb-collapsed .bottombar { left: 34px; }
 .tree-row.active { background: rgba(74, 158, 255, 0.18); }
 .tree-row.editing { box-shadow: inset 3px 0 0 #b084ff; }
 .tree-row.dragover { outline: 1px dashed var(--accent); outline-offset: -1px; }
+.tree-row.dragover-before { box-shadow: inset 0 2px 0 var(--accent); }
+.tree-row.dragover-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.tree-caret {
+  flex: none; width: 14px; text-align: center; cursor: pointer;
+  color: var(--muted); font-size: 10px; user-select: none;
+}
+.tree-caret:hover { color: var(--accent-hi); }
+.tree-caret-leaf { cursor: default; }
+.tree-search {
+  display: block; width: calc(100% - 16px); margin: 6px 8px 4px;
+  padding: 4px 8px; font-size: 11px; color: var(--text);
+  background: var(--panel-hi); border: 1px solid var(--border, #333);
+  border-radius: 6px; outline: none;
+}
+.tree-search:focus { border-color: var(--accent); }
+
+/* ----- Demo mode & Notes ------------------------------------------------ */
+#demoToggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+body.demo #stage { box-shadow: inset 0 0 0 2px var(--accent); }
+body.demo .notes-panel { display: none; }
+#notesToggle.active { background: var(--panel-hi); border-color: var(--accent); }
+.notes-panel {
+  position: absolute;
+  right: 220px; bottom: 52px;
+  width: 420px; max-width: calc(100% - 340px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 6;
+  display: flex; flex-direction: column;
+}
+.notes-panel[hidden] { display: none; }
+body.lib-collapsed .notes-panel { right: 44px; }
+.notes-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; font-size: 12px; font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.notes-head button { background: none; border: none; color: var(--muted); cursor: pointer; }
+.notes-head button:hover { color: var(--text); }
+.notes-list { max-height: 32vh; overflow-y: auto; padding: 4px 0; }
+.note-empty { padding: 10px 12px; font-size: 11px; color: var(--muted); }
+.note-row {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 5px 10px; font-size: 12px;
+}
+.note-row:hover { background: var(--panel-hi); }
+.note-id { color: var(--muted); font-family: ui-monospace, monospace; font-size: 10px; flex: none; }
+.note-tag {
+  flex: none; padding: 1px 6px; border-radius: 8px; cursor: pointer;
+  background: rgba(74, 158, 255, 0.16); color: var(--accent-hi);
+  font-family: ui-monospace, monospace; font-size: 10px;
+}
+.note-tag:hover { background: rgba(74, 158, 255, 0.3); }
+.note-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.note-del { flex: none; background: none; border: none; color: var(--muted); cursor: pointer; }
+.note-del:hover { color: #ff6b6b; }
+.notes-add { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.notes-add input {
+  padding: 4px 8px; font-size: 11px; color: var(--text);
+  background: var(--panel-hi); border: 1px solid var(--border); border-radius: 6px; outline: none;
+}
+.notes-add input:focus { border-color: var(--accent); }
+#noteTags { flex: 0 0 130px; }
+#noteText { flex: 1; min-width: 0; }
+.notes-add button {
+  flex: none; padding: 2px 10px; background: var(--panel-hi);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer;
+}
+.notes-add button:hover { border-color: var(--accent); }
 .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-meta { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; flex: none; }
 .tree-front {

@@ -153,7 +153,8 @@ On launch you pick a **start mode**:
 The screenshot timer defaults to **10 seconds**; choose no timer, 3s, 5s, or 10s
 as needed. A full-screen countdown gives you time to open a menu or hover a tooltip.
 The **🆕 New** button reopens the start chooser at any time. Annotated images are
-saved to `~/Εικόνες/PixelRuller/` (your Pictures folder + `PixelRuller`).
+saved to the `output/` folder next to the app (for read-only installs:
+`~/PixelRuller/output/`).
 
 ## Bind a keyboard shortcut (KDE)
 

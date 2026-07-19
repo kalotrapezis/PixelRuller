@@ -8,12 +8,12 @@
 
 ## server.py
 
-The HTTP server captures the desktop via `spectacle`, manages file I/O, and brokers localhost design commands between the CLI and open editor. It runs a threaded Python stdlib server on localhost and serves static files from the `web/` directory. Paths use locale-aware directory resolution (xdg-user-dir or fallbacks) to save to the user's Pictures folder.
+The HTTP server captures the desktop via `spectacle`, manages file I/O, and brokers localhost design commands between the CLI and open editor. It runs a threaded Python stdlib server on localhost and serves static files from the `web/` directory. Output is saved to `output/` next to the app (falling back to `~/PixelRuller/output` for read-only installs, then the old Pictures location).
 
 | Name | One-line summary |
 |------|-----------------|
 | `pictures_dir()` | Resolve the user's Pictures directory (locale-aware, xdg or fallback). |
-| `save_dir()` | Return the PixelRuller subfolder in Pictures, creating it if needed. |
+| `save_dir()` | Return the default output folder: `<app>/output`, else `~/PixelRuller/output`, else Pictures/PixelRuller. |
 | `capture_screenshot()` | Call `spectacle` with flags and return raw PNG bytes or raise. |
 | `unique_path(name, ext)` | Return a non-clobbering filename in PixelRuller folder by appending `_2`, `_3` etc. |
 | `CommandBroker` / `COMMAND_BROKER` | Thread-safe short-lived queue: enqueue one command or a `commands` array, deliver each once to the open editor, store the shared `runCommand()` result for the CLI (`pixelruller-command -` batches stdin lines). |
@@ -27,7 +27,7 @@ The HTTP server captures the desktop via `spectacle`, manages file I/O, and brok
 | `Handler.handle_save_json()` | Accept JSON payload and name; write JSON file to disk. |
 | `Handler.handle_save_text()` | Accept text payload and name; write .txt (flow outline) to disk. |
 | `Handler.serve_static(base, rel)` | Serve a file from base dir with a path-traversal guard. |
-| `user_assets_dir()` | Drop folder for the user's own PNG/SVG design assets (`~Pictures/PixelRuller/assets`), auto-created. |
+| `user_assets_dir()` | Drop folder for the user's own PNG/SVG design assets (`<output dir>/assets`), auto-created. |
 | `Handler.handle_assets_list()` | GET /assets → JSON list of `{name, src}`: built-in Assets/SVGs plus user assets as `user/<file>` (PNG/SVG/JPG/WebP). |
 | `main()` | Parse CLI args (--grid, --no-open, --port); start server; optionally open browser. |
 
@@ -39,7 +39,7 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 
 | Name | One-line summary |
 |------|-----------------|
-| **State object** | `state` — ready/docMode/background/bgColor, W/H, view transform, mode, drag, snap, grid, snapPoints/eqLen/distInput, shapes[], selected, propOpen, building, mouse, panning. |
+| **State object** | `state` — ready/docMode/background/bgColor, W/H, view transform, mode, drag, snap, grid, snapPoints/eqLen/distInput, shapes[], selected, propOpen, building, mouse, panning, demo, notes[]. |
 | **DOM/Canvas** | `canvas`, `ctx`, `stage`, `coordsEl`, `hintEl`, `dpr` — references and device pixel ratio. |
 | `toScreen(tf, x, y)` | Convert image-space coordinates to screen-space using transform. |
 | `screenToImage(sx, sy)` | Convert screen-space coordinates to image-space. |
@@ -81,12 +81,19 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `isContainer(s)` / `parentContainer(s)` | Section/Window test; smallest container holding a shape's center. |
 | `childrenOf(c)` / `slotOf(s)` | A container's children (by `parent` id; geometry fallback for legacy shapes); a child's slot order. |
 | `rootWindowOf(s)` / `responsiveVisible(s)` | Resolve the owning Window and apply runtime toggle plus `hideBelow` / `showBelow` state without destroying hidden elements or their slots. |
-| `interactionTargets(s)` / `toggleInteractionTarget(s)` | Resolve either control-centric or target-centric hide/show bindings inside the owning Window and toggle the target during canvas selection. |
+| `interactionTargets(s)` / `toggleInteractionTarget(s)` | Resolve either control-centric or target-centric hide/show bindings inside the owning Window and toggle the target. Fired by **Shift+Click** on the trigger (plain click only selects); Shift+Click outside an open modal dismisses it; Shift+wheel scrolls a scroll container under the cursor while plain wheel zooms. |
 | `adoptShape(s)` | Re-parent a dropped/inserted element into the container under its center; insert at the slot matching drop position, renumber siblings. |
 | `strokeColor(s, c)` / `side4(v, def)` | Border color with the element's strokeOpacity applied; normalize margin/padding (number or object) to {t,r,b,l}. |
 | `copyStyle()` / `pasteStyle()` | Style clipboard: copy the selected element's effective style keys, apply to the selection (🖌 buttons). |
 | `THEMES` / `buildPalette()` / `renderSwatches()` / `applyThemeToDesign()` | GTK/KDE light+dark palettes in the bottom bar; swatch click=fill, right-click=border; theme the whole design by widget role. |
-| `refreshTree()` | Rebuild the sidebar Elements tree (hierarchy by parent/slot + free elements): click=select, drag=re-parent/reorder (+z lift), ▲=bring to front. Called from relayout/selection changes. |
+| `refreshTree()` | Rebuild the sidebar Elements tree (hierarchy by parent/slot + free elements): click=select, caret=collapse/expand, search box filters (auto-expands to hits), drag with zones (row top=before, bottom=after, middle=into container, +z lift), ▲=bring to front. Called from relayout/selection changes. |
+| `modalAncestor(s)` / `activeModalOf(s)` / `visibleModals()` | Modal-section helpers: a section with `modal:true` floats above its whole window on a dark scrim (hamburger menus, gear dialogs). |
+| `placeModals()` | Pin every open modal each relayout: below its `anchor` element, else centred in its window, clamped inside it. |
+| `trackHoverCopy()` / `resetHoverCopy()` | Hovering a selected widget for 5 s copies "name (id)" to the clipboard and toasts it. |
+| `setDemo(on)` | Demo mode (▶ Demo button / `demo` command): plain clicks fire interactions, tabs switch, wheel scrolls scroll containers, scrim clicks dismiss modals — selection/move/resize/delete/re-parent and the props panel are all disabled. |
+| `isActuatable(s)` / `actuateWidget(s, p)` | One "click this control" path for demo mode and edit-mode Shift+Click: flips the widget's own state (toggle `on`, checkbox/radio `checked` with sibling-radio clearing, slider `value` from click position, tabs `active`), then fires its `action`/interaction. |
+| `focusWindow(win)` | Pan/zoom the camera to frame one window — used when an action target is another window (flow connection navigation). |
+| `addNote(text, tagRefs)` / `noteId()` / `refreshNotes()` / `toggleNotesPanel(show)` | Design notes tagged with element ids (refs resolve to canonical `el_*`), saved as `doc.notes` in the design JSON. 🗒 Notes button opens the edit-mode popup above the bottom bar; tag chips select the element; `note list/add/del` gives Claude the same access. |
 | `runCommand(str)` / `execCommand(str)` | Shared mutation entry point and verb interpreter for the bottom bar and localhost CLI; includes `new canvas`, `add … with <prop> <value>` pairs (validated, id/name returned as data), design edits plus multi-`select`/`select add`/`select none`, `group`, `front`/`back`, `cut`/`paste`, `style copy|apply`, `defaults`, tree/list, inspect, selection, and command-focus UI control. |
 | `applyToolkitDefaults(root, toolkit)` | Reapply documented toolkit metrics (fixed-axis sizes, radius, padding, gap) plus the registry's visual style to a widget subtree; keeps semantic text/name/state and Window dimensions. |
 | `commandShapeLine()` / `commandTree()` | Produce structured hierarchy output with selection, id/slot, geometry, colors, visibility, and layout mode. |
@@ -109,7 +116,7 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `zOf/topZ/bottomZ/nextZ/zOrder` | Depth (z-order) helpers; zOrder gives back-to-front (or reversed) indices. |
 | `bringFront()` / `sendBack()` | Change the selected element's depth. |
 | `copySelected/cutSelected/pasteClipboard/duplicateSelected` | Element clipboard operations. |
-| `buildFlowText()` / `saveFlowText()` | Build & save the plain-text flow outline (windows + contained widgets). |
+| `buildFlowText()` / `saveFlowText()` | Build & save the plain-text flow outline: windows + contained widgets, a CONNECTIONS section (every `action`/`target` and hide/show binding as an edge, classified flow → window / modal dialog / in-window), and the design NOTES. |
 | `buildXml()` / `elementXml()` / `saveXml()` | Build & save the design as a nested XML tree (canvas>window>widget). |
 | `htmlChildSizing()` / `htmlNodeStyle()` / `htmlContainerStyle()` | Translate canonical sizing, text overflow, alignment and justification into CSS; percentage rows remain proportional and only explicit Fixed children become absolute. |
 | `htmlResponsiveCss()` | Export `hideBelow` / `showBelow` as Window-scoped CSS container queries. |
@@ -146,7 +153,7 @@ The interactive frontend running on an HTML5 canvas. Manages measurement state (
 | `clearAll()` | Reset shapes, building, selection. |
 | `distToSegment(p, a, b)` | Return distance from point `p` to line segment `a–b`. |
 | `pointInPolygon(p, pts)` | Return true if `p` is inside polygon using ray-casting. |
-| `hitTest(p)` | Return index of topmost shape (point/area/rect/ellipse) under point `p` or null. |
+| `hitTest(p)` / `hitTestPass(p, filter, tol)` | Return index of topmost shape under point `p` or null. Open-modal shapes get priority; exact containment wins before the ±8px screen tolerance so low zoom can't hit a neighbouring row. |
 | `selectOnly/clearSelection/toggleInSelection` | Maintain `selection` (all) + `selected` (primary). |
 | `finalizeMarquee(m)` | Select elements intersecting the marquee (excludes fully-containing backgrounds). |
 | `groupSelection()` / `ungroupSelection()` | Wrap selection in a Section / remove a selected Section. |

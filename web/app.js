@@ -7,6 +7,8 @@ const state = {
   background: null,     // HTMLImageElement screenshot, or null for a blank canvas
   bgColor: "#ffffff",   // fill color when there is no background image
   aiTheme: null,        // AI code-gen theme template carried by a loaded design (null = stamp canonical on export)
+  demo: false,          // Demo mode: interactions fire on plain click, nothing is editable
+  notes: [],            // design notes [{id, tags: [elementRef…], text}] — saved in the JSON
   drag: null,           // active pointer drag: {kind:'create'|'move'|'resize', ...}
   W: 0, H: 0,           // canvas size in true pixels
   view: { scale: 1, ox: 0, oy: 0 }, // screen = image * scale + offset
@@ -223,9 +225,8 @@ function drawScene(g, tf, W, H, opts = {}) {
 
   if (state.grid.on && state.ready && state.docMode !== "canvas") drawGrid(g, tf, W, H);
 
-  for (const i of zOrder(false)) { // back-to-front
+  const paintShape = (i) => {
     const s = state.shapes[i];
-    if (isElement(s) && !responsiveVisible(s)) continue;
     const showText = state.showNumbers;
     if (s.type === "point") drawPoint(g, tf, s, showText);
     else if (s.type === "area") drawArea(g, tf, s, false, showText);
@@ -238,16 +239,45 @@ function drawScene(g, tf, W, H, opts = {}) {
       g.restore();
     }
     if (opts.cursor && state.selection.includes(i)) drawSelection(g, tf, s);
+  };
+
+  for (const i of zOrder(false)) { // back-to-front
+    const s = state.shapes[i];
+    if (isElement(s) && !responsiveVisible(s)) continue;
+    if (isElement(s) && activeModalOf(s)) continue; // modals paint in the overlay pass
+    paintShape(i);
   }
 
   // A composite's outer border belongs to its frame, above all descendants.
   // Its fill is painted at normal z by drawWidget; this pass closes the frame.
   for (const i of zOrder(false)) {
     const s = state.shapes[i];
-    if (isComposite(s)) drawCompositeBorder(g, tf, s);
+    if (isComposite(s) && !activeModalOf(s)) drawCompositeBorder(g, tf, s);
   }
-  for (const c of state.shapes.filter(s => isContainer(s) && responsiveVisible(s) && s.overflow === "scroll"))
+  for (const c of state.shapes.filter(s => isContainer(s) && responsiveVisible(s) && s.overflow === "scroll" && !activeModalOf(s)))
     drawAutoScrollbars(g, tf, c);
+
+  // Open modal sections: dark scrim over their window, then the subtree on top.
+  for (const m of visibleModals()) {
+    const win = rootWindowOf(m);
+    if (win) {
+      g.save();
+      g.fillStyle = "rgba(0, 0, 0, 0.45)";
+      g.fillRect(tf.ox + win.x * tf.scale, tf.oy + win.y * tf.scale, win.w * tf.scale, win.h * tf.scale);
+      g.restore();
+    }
+    for (const i of zOrder(false)) {
+      const s = state.shapes[i];
+      if (!isElement(s) || !responsiveVisible(s) || activeModalOf(s) !== m) continue;
+      paintShape(i);
+    }
+    for (const i of zOrder(false)) {
+      const s = state.shapes[i];
+      if (isComposite(s) && activeModalOf(s) === m) drawCompositeBorder(g, tf, s);
+    }
+    for (const c of state.shapes.filter(s => isContainer(s) && responsiveVisible(s) && s.overflow === "scroll" && activeModalOf(s) === m))
+      drawAutoScrollbars(g, tf, c);
+  }
 
   // Marquee rectangle while rubber-band selecting.
   if (opts.cursor && state.drag && state.drag.kind === "marquee") {
@@ -1310,6 +1340,8 @@ function newCanvas(w, h) {
   state.H = Math.max(1, Math.round(h));
   state.shapes = [];
   state.aiTheme = null; // fresh design → stamp the canonical template on export
+  state.notes = [];
+  refreshNotes();
   state.editComposite = null;
   clearSelection();
   state.building = null;
@@ -1881,6 +1913,38 @@ function responsiveVisible(s) {
   return true;
 }
 
+// A modal section floats above its whole window on a dark scrim (hamburger
+// menus, settings dialogs). `anchor` pins it near a trigger element; without
+// an anchor it centres in the window.
+function modalAncestor(s) {
+  for (let c = s; c; c = c.parent ? byId(c.parent) : null)
+    if (c.widget === "section" && c.modal) return c;
+  return null;
+}
+function activeModalOf(s) {
+  const m = modalAncestor(s);
+  return m && responsiveVisible(m) ? m : null;
+}
+function visibleModals() {
+  return state.shapes.filter(s => s.widget === "section" && s.modal && responsiveVisible(s));
+}
+
+// Pin every open modal: anchored under its anchor element, else window-centred.
+function placeModals() {
+  for (const m of visibleModals()) {
+    const win = rootWindowOf(m);
+    if (!win) continue;
+    const a = m.anchor ? resolveInWindow(m, m.anchor) : null;
+    let nx, ny;
+    if (a && a !== m) { nx = a.x; ny = a.y + a.h + 6; }
+    else { nx = win.x + (win.w - m.w) / 2; ny = win.y + (win.h - m.h) / 2; }
+    nx = Math.max(win.x + 8, Math.min(nx, win.x + win.w - m.w - 8));
+    ny = Math.max(win.y + 8, Math.min(ny, win.y + win.h - m.h - 8));
+    const dx = nx - m.x, dy = ny - m.y;
+    if (dx || dy) translateSubtree(m, dx, dy);
+  }
+}
+
 function interactionTarget(trigger) {
   const ref = String(trigger?.toggleTarget || "").trim();
   if (!ref) return null;
@@ -1936,6 +2000,60 @@ function performUiAction(trigger) {
   relayout(); render();
   toast(`${act} → ${target.name || target.id}: ${responsiveVisible(target) ? "shown" : "hidden"}`);
   return true;
+}
+
+// Pan/zoom the camera to frame one window — demo-mode "navigation" when a
+// button's action targets another window (the flow connection).
+function focusWindow(win) {
+  const w = stage.clientWidth, h = stage.clientHeight, m = 40;
+  const scale = Math.min((w - 2 * m) / win.w, (h - 2 * m) / win.h);
+  state.view.scale = scale;
+  state.view.ox = (w - win.w * scale) / 2 - win.x * scale;
+  state.view.oy = (h - win.h * scale) / 2 - win.y * scale;
+  render();
+  toast(`→ ${win.name || win.id}`);
+}
+
+// True if clicking this control does something in demo mode.
+function isActuatable(s) {
+  return !!s && (["toggle", "checkbox", "radio", "slider", "tabs"].includes(s.widget) ||
+    (s.action && s.action !== "none" && s.target) || interactionTargets(s).length > 0);
+}
+
+// Make a control respond like a real widget: flip its own visual state from
+// the click, then fire any action it carries. A target that is ANOTHER window
+// is a flow connection — the camera follows it instead of hiding/showing.
+function actuateWidget(s, p) {
+  let did = false;
+  if (s.widget === "toggle") { s.on = !s.on; did = true; }
+  else if (s.widget === "checkbox") { s.checked = !s.checked; did = true; }
+  else if (s.widget === "radio") {
+    s.checked = true; did = true;
+    // Radios in the same container are one group: checking one clears the rest.
+    const parent = s.parent ? byId(s.parent) : null;
+    if (parent) for (const sib of childrenOf(parent)) if (sib !== s && sib.widget === "radio") sib.checked = false;
+  } else if (s.widget === "slider" && p) {
+    const t = s.orientation === "vertical" ? 1 - (p.y - s.y) / s.h : (p.x - s.x) / s.w;
+    s.value = Math.max(0, Math.min(100, Math.round(t * 100)));
+    did = true;
+  } else if (s.widget === "tabs" && p) {
+    const count = Math.max(1, Math.min(12, s.count != null ? s.count : 3));
+    s.active = Math.max(0, Math.min(count - 1, Math.floor((p.x - s.x) / (s.w / count))));
+    did = true;
+  }
+  const target = s.action && s.action !== "none" && s.target ? (resolveInWindow(s, s.target) || findShape(s.target)) : null;
+  if (target && isWindow(target) && rootWindowOf(s) !== target) {
+    target.runtimeVisible = true;
+    focusWindow(target);
+    did = true;
+  } else if (target || interactionTargets(s).length) {
+    did = toggleInteractionTarget(s) || did;
+  }
+  if (did) {
+    render();
+    if (state.propOpen !== null) syncPropPanel();
+  }
+  return did;
 }
 
 function toggleInteractionTarget(trigger) {
@@ -2269,6 +2387,7 @@ function relayout() {
     layoutWindows();
     for (const c of cs) arrangeInto(c);
   }
+  placeModals();
   refreshTree();
 }
 
@@ -2383,10 +2502,26 @@ function pointInPolygon(p, pts) {
 
 // Return the index of the topmost shape under image-space point `p`, or null.
 function hitTest(p) {
-  const tol = 8 / state.view.scale; // ~8 screen px, in image units
+  // Open modals paint above everything in their window, so they hit first.
+  // Within each group, exact containment wins before the ±8px screen
+  // tolerance — at low zoom the tolerance spans whole rows and would let a
+  // front-most neighbour steal the hit from the element under the cursor.
+  const passes = visibleModals().length ? [s => isElement(s) && activeModalOf(s), null] : [null];
+  for (const filter of passes) {
+    const exact = hitTestPass(p, filter, 0);
+    if (exact !== null) return exact;
+    const near = hitTestPass(p, filter);
+    if (near !== null) return near;
+  }
+  return null;
+}
+
+function hitTestPass(p, filter, tolOverride) {
+  const tol = tolOverride != null ? tolOverride : 8 / state.view.scale; // ~8 screen px, in image units
   for (const i of zOrder(true)) { // front-to-back
     const s = state.shapes[i];
     if (isElement(s) && !responsiveVisible(s)) continue;
+    if (filter && !filter(s)) continue;
     if (isElement(s) && !pointInsideOverflowAncestors(s, p)) continue;
     if (s.type === "point") {
       if (dist(p, s) <= Math.max(tol, 6)) return selectionIndexFor(s, i);
@@ -2748,19 +2883,36 @@ function applyToolkitDefaults(root, toolkit) {
 // Full hierarchy, visible even when a wrong z hides an element on canvas.
 // Click selects; drag re-parents / reorders (and lifts above the drop
 // target); ▲ brings to front.
+const treeCollapsed = new Set(); // container ids folded in the sidebar tree
+let treeFilter = "";
+
 function refreshTree() {
   const host = document.getElementById("treeHost");
   if (!host || state.docMode !== "canvas") return;
+  const q = treeFilter.trim().toLowerCase();
+  const matches = (s) => !q || String(s.name || "").toLowerCase().includes(q) ||
+    String(s.id || "").toLowerCase().includes(q) || String(s.widget || s.type || "").toLowerCase().includes(q);
+  const subtreeMatches = (s) => matches(s) || (isContainer(s) && childrenOf(s).some(subtreeMatches));
   const rows = [];
   const walk = (c, d) => {
     for (const k of childrenOf(c).sort((a, b) => slotOf(a) - slotOf(b))) {
+      if (q && !subtreeMatches(k)) continue;
       rows.push({ s: k, depth: d });
-      if (isContainer(k)) walk(k, d + 1);
+      // A search auto-expands so hits inside folded containers stay visible.
+      if (isContainer(k) && (q || !treeCollapsed.has(k.id))) walk(k, d + 1);
     }
   };
-  for (const w of state.shapes.filter(isWindow)) { rows.push({ s: w, depth: 0 }); walk(w, 1); }
-  const listed = new Set(rows.map(r => r.s));
-  for (const s of state.shapes) if (isElement(s) && !listed.has(s)) rows.push({ s, depth: 0, free: true });
+  for (const w of state.shapes.filter(isWindow)) {
+    if (q && !subtreeMatches(w)) continue;
+    rows.push({ s: w, depth: 0 });
+    if (q || !treeCollapsed.has(w.id)) walk(w, 1);
+  }
+  // "Free" means unreachable from any window, independent of fold state.
+  const reachable = new Set();
+  const mark = (c) => { for (const k of childrenOf(c)) { reachable.add(k); if (isContainer(k)) mark(k); } };
+  for (const w of state.shapes.filter(isWindow)) { reachable.add(w); mark(w); }
+  for (const s of state.shapes)
+    if (isElement(s) && !reachable.has(s) && (!q || subtreeMatches(s))) rows.push({ s, depth: 0, free: true });
 
   host.innerHTML = "";
   for (const { s, depth, free } of rows) {
@@ -2769,13 +2921,23 @@ function refreshTree() {
     row.className = "tree-row" + (state.selection.includes(idx) ? " active" : "") +
       (s.id === state.editComposite ? " editing" : "");
     row.style.paddingLeft = (8 + depth * 14) + "px";
-    row.draggable = !isWindow(s);
-    const label = `${isContainer(s) ? "▸ " : ""}${s.name || s.id}${free ? " (free)" : ""}${s.fixed ? " 📌" : ""}`;
-    row.innerHTML = `<span class="tree-name">${label}</span>` +
+    row.draggable = !isWindow(s) && !state.demo;
+    const folded = treeCollapsed.has(s.id) && !q;
+    const caret = isContainer(s)
+      ? `<span class="tree-caret" title="${folded ? "Expand" : "Collapse"}">${folded ? "▸" : "▾"}</span>`
+      : `<span class="tree-caret tree-caret-leaf"></span>`;
+    const label = `${s.name || s.id}${free ? " (free)" : ""}${s.fixed ? " 📌" : ""}`;
+    row.innerHTML = caret + `<span class="tree-name">${label}</span>` +
       `<span class="tree-meta">${s.widget || s.type} z${zOf(s)}</span>` +
       `<button class="tree-front" title="Bring to front">▲</button>`;
+    const caretEl = row.querySelector(".tree-caret");
+    if (isContainer(s)) caretEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (treeCollapsed.has(s.id)) treeCollapsed.delete(s.id); else treeCollapsed.add(s.id);
+      refreshTree();
+    });
     row.addEventListener("click", (e) => {
-      if (e.target.classList.contains("tree-front")) return;
+      if (e.target.classList.contains("tree-front") || e.target.classList.contains("tree-caret")) return;
       // Choosing a descendant in the out-of-band tree explicitly enters its
       // nearest composite, even when normal canvas clicks select the wrapper.
       for (let p = s.parent ? byId(s.parent) : null; p; p = p.parent ? byId(p.parent) : null)
@@ -2789,18 +2951,36 @@ function refreshTree() {
       bringFront();
       refreshTree();
     });
+    // Drop zones give pixel-precise placement even when canvas elements
+    // overlap: top edge = before this row, bottom edge = after it, and the
+    // middle of a container row = into it (last slot).
+    const dropZone = (e) => {
+      const r = row.getBoundingClientRect();
+      const t = (e.clientY - r.top) / Math.max(1, r.height);
+      if (isWindow(s)) return "into";
+      if (isContainer(s)) return t < 0.25 ? "before" : t > 0.75 ? "after" : "into";
+      return t < 0.5 ? "before" : "after";
+    };
+    const clearZones = () => row.classList.remove("dragover", "dragover-before", "dragover-after");
     row.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", s.id));
-    row.addEventListener("dragover", (e) => { e.preventDefault(); row.classList.add("dragover"); });
-    row.addEventListener("dragleave", () => row.classList.remove("dragover"));
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      clearZones();
+      const z = dropZone(e);
+      row.classList.add(z === "into" ? "dragover" : `dragover-${z}`);
+    });
+    row.addEventListener("dragleave", clearZones);
     row.addEventListener("drop", (e) => {
       e.preventDefault();
-      row.classList.remove("dragover");
+      const zone = dropZone(e);
+      clearZones();
       const src = byId(e.dataTransfer.getData("text/plain"));
       if (!src || src === s || isWindow(src)) return;
       // No cycles: don't drop a container into its own subtree.
       for (let p = s; p; p = p.parent ? byId(p.parent) : null) if (p === src) return;
-      if (isContainer(s)) { src.parent = s.id; src.slot = 9999; }        // into the container, last slot
-      else { src.parent = s.parent || null; src.slot = slotOf(s) === Infinity ? 9999 : slotOf(s) - 0.5; } // before this sibling
+      const at = slotOf(s) === Infinity ? 9999 : slotOf(s);
+      if (zone === "into") { src.parent = s.id; src.slot = 9999; }             // into the container, last slot
+      else { src.parent = s.parent || null; src.slot = zone === "before" ? at - 0.5 : at + 0.5; }
       src.z = zOf(s) + 0.5; // lift above the drop target so it's visible
       relayout();
       render();
@@ -2808,6 +2988,91 @@ function refreshTree() {
     host.appendChild(row);
   }
 }
+
+document.getElementById("treeSearch")?.addEventListener("input", (e) => {
+  treeFilter = e.target.value;
+  refreshTree();
+});
+
+// ----- Demo mode -----------------------------------------------------------
+// "Use" the design like a running app: plain clicks fire interactions, wheel
+// scrolls scroll containers, clicking the scrim closes modals — and nothing
+// can be selected, moved, resized, deleted or re-parented.
+function setDemo(on) {
+  state.demo = !!on;
+  if (state.demo) { clearSelection(); closeProps(); state.drag = null; toggleNotesPanel(false); }
+  document.body.classList.toggle("demo", state.demo);
+  document.getElementById("demoToggle")?.classList.toggle("active", state.demo);
+  refreshTree();
+  render();
+  toast(state.demo ? "Demo mode — click to use the UI; editing is off" : "Edit mode");
+}
+document.getElementById("demoToggle")?.addEventListener("click", () => setDemo(!state.demo));
+
+// ----- Notes ---------------------------------------------------------------
+// Free-form design notes with element-id tags, saved inside the design JSON
+// (doc.notes) so they round-trip and Claude can read them (`note list`).
+const escNote = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function noteId() {
+  let n = 1;
+  while (state.notes.some(x => x.id === `note_${n}`)) n++;
+  return `note_${n}`;
+}
+
+function addNote(text, tagRefs) {
+  // Store canonical element ids when a tag resolves; keep the raw ref if not.
+  const tags = (tagRefs || []).map(ref => { const s = findShape(ref); return s ? s.id : String(ref); });
+  const n = { id: noteId(), tags, text: String(text) };
+  state.notes.push(n);
+  refreshNotes();
+  return n;
+}
+
+function refreshNotes() {
+  const btn = document.getElementById("notesToggle");
+  if (btn) btn.textContent = `🗒 Notes${state.notes.length ? ` (${state.notes.length})` : ""}`;
+  const host = document.getElementById("notesList");
+  if (!host) return;
+  host.innerHTML = state.notes.length ? "" : '<div class="note-empty">No notes yet — tag elements by id/name and they stay in the design JSON.</div>';
+  for (const n of state.notes) {
+    const row = document.createElement("div");
+    row.className = "note-row";
+    row.innerHTML = `<span class="note-id">${escNote(n.id)}</span>` +
+      n.tags.map(t => `<span class="note-tag" title="Select this element">${escNote(t)}</span>`).join("") +
+      `<span class="note-text">${escNote(n.text)}</span>` +
+      `<button class="note-del" title="Delete note">✕</button>`;
+    row.querySelector(".note-del").addEventListener("click", () => {
+      state.notes = state.notes.filter(x => x !== n);
+      refreshNotes();
+    });
+    row.querySelectorAll(".note-tag").forEach(el => el.addEventListener("click", () => {
+      const s = findShape(el.textContent);
+      if (s) { selectOnly(state.shapes.indexOf(s)); render(); } else toast(`No element "${el.textContent}"`, true);
+    }));
+    host.appendChild(row);
+  }
+}
+
+function toggleNotesPanel(show) {
+  const panel = document.getElementById("notesPanel");
+  if (!panel) return;
+  const on = show != null ? show : panel.hidden;
+  panel.hidden = !on || state.demo; // notes are an edit-mode affordance
+  document.getElementById("notesToggle")?.classList.toggle("active", !panel.hidden);
+  if (!panel.hidden) refreshNotes();
+}
+document.getElementById("notesToggle")?.addEventListener("click", () => toggleNotesPanel());
+document.getElementById("noteAdd")?.addEventListener("click", () => {
+  const textEl = document.getElementById("noteText"), tagsEl = document.getElementById("noteTags");
+  const text = textEl.value.trim();
+  if (!text) { toast("Write the note text first", true); return; }
+  addNote(text, tagsEl.value.split(/[,\s]+/).filter(Boolean));
+  textEl.value = ""; tagsEl.value = "";
+});
+document.getElementById("noteText")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); document.getElementById("noteAdd").click(); }
+});
 
 // ----- Command line (Phase 5a) -------------------------------------------
 // One grammar for the GUI command bar, the terminal, and Claude. Every
@@ -2843,8 +3108,8 @@ const SET_ENUMS = {
   captionSide: ["top", "bottom"], captionAlign: ["left", "center", "right"],
   action: ["none", "toggle", "show", "hide", "switch"],
 };
-const SET_BOOLEANS = new Set(["fixed", "filled", "wrap", "checked", "on", "bindScroll", "showCaption", "interactionEnabled", "bold", "italic", "borderSides", "shadow", "showText"]);
-const SET_STRINGS = new Set(["name", "text", "fill", "stroke", "textColor", "icon", "controls", "barFill", "toggleTarget", "interactionControl", "fontFamily", "target", "src"]);
+const SET_BOOLEANS = new Set(["fixed", "filled", "wrap", "checked", "on", "bindScroll", "showCaption", "interactionEnabled", "bold", "italic", "borderSides", "shadow", "showText", "modal"]);
+const SET_STRINGS = new Set(["name", "text", "fill", "stroke", "textColor", "icon", "controls", "barFill", "toggleTarget", "interactionControl", "fontFamily", "target", "src", "anchor"]);
 const SET_NUMBERS = {
   x: [-Infinity, Infinity], y: [-Infinity, Infinity], w: [1, Infinity], h: [1, Infinity], z: [-Infinity, Infinity],
   opacity: [0, 100], strokeWidth: [0, Infinity], strokeOpacity: [0, 100], radius: [0, Infinity],
@@ -2903,7 +3168,8 @@ const CMD_HELP =
   'group [name] · make-widget [name] · enter <composite> · exit · ungroup <composite|section> · ' +
   'front <el> · back <el> · style copy <el> · style apply [<el> …] · ' +
   'defaults <el> [gtk4|kde] · theme <GTK light|GTK dark|KDE light|KDE dark> · ' +
-  'assets [filter] · tree [root] [all] · inspect <el> · selection · ui <hide|show|toggle> · list · help';
+  'assets [filter] · tree [root] [all] · inspect <el> · selection · ui <hide|show|toggle> · ' +
+  'demo <on|off|toggle> · note <list|add "text" [el …]|del <id>> · list · help';
 
 function runCommand(input) {
   const res = execCommand(input);
@@ -2984,6 +3250,35 @@ function execCommand(input) {
         hideStart();
         newCanvas(w, h);
         return { ok: true, msg: `new canvas ${w}×${h}` };
+      }
+
+      case "demo": {
+        const m = (t[1] || "toggle").toLowerCase();
+        if (!["on", "off", "toggle"].includes(m)) return fail("demo <on|off|toggle>");
+        setDemo(m === "toggle" ? !state.demo : m === "on");
+        return { ok: true, msg: `demo mode ${state.demo ? "on" : "off"}` };
+      }
+
+      case "note": case "notes": {
+        const sub = (t[1] || "list").toLowerCase();
+        if (sub === "list") {
+          const lines = state.notes.map(n => `${n.id}${n.tags.length ? " [" + n.tags.join(", ") + "]" : ""}: ${n.text}`);
+          return { ok: true, msg: lines.join("\n") || "no notes",
+            data: { kind: "notes", notes: state.notes.map(n => ({ id: n.id, tags: [...n.tags], text: n.text })) } };
+        }
+        if (sub === "add") {
+          if (!t[2]) return fail('note add "text" [element …]');
+          const n = addNote(t[2], t.slice(3));
+          return { ok: true, msg: `${n.id} added${n.tags.length ? " [" + n.tags.join(", ") + "]" : ""}` };
+        }
+        if (sub === "del") {
+          const n = state.notes.find(x => x.id === t[2]);
+          if (!n) return fail(`no note "${t[2] || ""}"`);
+          state.notes = state.notes.filter(x => x !== n);
+          refreshNotes();
+          return { ok: true, msg: `${n.id} deleted` };
+        }
+        return fail('note <list|add "text" [element …]|del <id>>');
       }
 
       case "ui": {
@@ -3937,6 +4232,8 @@ function serializeShape(s) {
     if (s.src) out.src = s.src;
     if (s.action && s.action !== "none") out.action = s.action;
     if (s.target) out.target = s.target;
+    if (s.modal) out.modal = true;
+    if (s.anchor) out.anchor = s.anchor;
     if (s.checked != null) out.checked = !!s.checked;
     if (s.on != null) out.on = !!s.on;
     if (s.value != null) out.value = s.value;
@@ -4125,6 +4422,7 @@ function buildExport() {
     // Round-trips a design's own template if it carries one; otherwise stamps
     // the current canonical template so older files gain it on next export.
     aiTheme: state.aiTheme || AI_THEME_TEMPLATE,
+    notes: state.notes.map(n => ({ id: n.id, tags: [...(n.tags || [])], text: n.text })),
     count: shapes.length,
     shapes,
   };
@@ -4149,6 +4447,10 @@ function loadDesign(doc) {
   state.bgColor = c.bgColor || "#ffffff";
   newCanvas(w, h); // blank canvas of the right size (clears shapes; resets aiTheme)
   state.aiTheme = doc.aiTheme || null; // preserve a design's own template across a round-trip
+  state.notes = Array.isArray(doc.notes)
+    ? doc.notes.map((n, i) => ({ id: n.id || `note_${i + 1}`, tags: Array.isArray(n.tags) ? n.tags.map(String) : [], text: String(n.text || "") }))
+    : [];
+  refreshNotes();
   const loadSizing = (s) => ({
     sizeModeX: s.sizeModeX || "fixed", sizeModeY: s.sizeModeY || "fixed", grow: Number(s.grow) || 0,
     widthPercent: s.widthPercent != null ? Math.max(0, Math.min(100, Number(s.widthPercent))) : 100,
@@ -4200,6 +4502,7 @@ function loadDesign(doc) {
         showText: s.showText === false ? false : undefined,
         src: s.src || undefined,
         action: s.action || undefined, target: s.target || undefined,
+        modal: !!s.modal || undefined, anchor: s.anchor || undefined,
         showCaption: s.widget === "section" ? (s.showCaption != null ? !!s.showCaption : !!String(s.text || "").trim()) : undefined };
     }
     if (s.type === "rect" || s.type === "ellipse") {
@@ -4313,7 +4616,38 @@ function buildFlowText() {
   }
   const loose = state.shapes.filter(s => isElement(s) && s.widget !== "window" && !inWin.has(s));
   if (loose.length) { lines.push("LOOSE (not in a window):"); loose.forEach(k => lines.push("  - " + label(k))); lines.push(""); }
-  lines.push("# connections/actions: TODO (add actions to widgets to draw the flow)");
+
+  // Connections: every action/interaction binding becomes one edge. A target
+  // in ANOTHER window is flow navigation; a modal section is a dialog edge.
+  const ref = (s) => {
+    if (isWindow(s)) return `WINDOW ${s.name || s.id}`;
+    const w = rootWindowOf(s);
+    return `${w ? (w.name || w.id) + " / " : ""}${s.name || s.id}`;
+  };
+  const kindOf = (trigger, target) =>
+    isWindow(target) && rootWindowOf(trigger) !== target ? "flow → window" :
+    target.modal ? "modal dialog" : "in-window";
+  const edges = [];
+  for (const s of state.shapes) {
+    if (!isElement(s)) continue;
+    if (s.action && s.action !== "none" && s.target) {
+      const target = resolveInWindow(s, s.target) || findShape(s.target);
+      edges.push(`  - ${ref(s)} --${s.action}--> ${target ? ref(target) : `"${s.target}" (unresolved)`}${target ? `  (${kindOf(s, target)})` : ""}`);
+    }
+    for (const target of interactionTargets(s))
+      edges.push(`  - ${ref(s)} --hide/show--> ${ref(target)}  (${kindOf(s, target)})`);
+  }
+  if (edges.length) { lines.push("CONNECTIONS:"); lines.push(...[...new Set(edges)]); lines.push(""); }
+  else lines.push("# no connections yet — set `action` + `target` on controls to draw the flow", "");
+
+  if (state.notes.length) {
+    lines.push("NOTES:");
+    for (const n of state.notes) {
+      const tags = n.tags.map(t => { const s = findShape(t); return s ? ref(s) : t; });
+      lines.push(`  - ${n.id}${tags.length ? " [" + tags.join(", ") + "]" : ""}: ${n.text}`);
+    }
+    lines.push("");
+  }
   return lines.join("\n");
 }
 
@@ -5326,6 +5660,37 @@ canvas.addEventListener("drop", (e) => {
   }
 });
 
+// Hovering a SELECTED widget for 5s copies "name (id)" to the clipboard —
+// a quick way to grab exact references for commands without opening panels.
+const HOVER_COPY_MS = 5000;
+let hoverCopy = { timer: null, id: null };
+function resetHoverCopy() {
+  if (hoverCopy.timer) clearTimeout(hoverCopy.timer);
+  hoverCopy = { timer: null, id: null };
+}
+function trackHoverCopy() {
+  if (state.docMode !== "canvas" || state.drag || state.panning) { resetHoverCopy(); return; }
+  // Armed by the selected widget's own box, so overlapping siblings can't
+  // steal the hover from what the user explicitly selected.
+  const p = { x: state.mouse.ix, y: state.mouse.iy };
+  const s = state.selection.map(i => state.shapes[i]).find(sel => {
+    if (!sel || !isElement(sel) || !responsiveVisible(sel)) return false;
+    const bb = shapeBBox(sel);
+    return p.x >= bb.x && p.x <= bb.x + bb.w && p.y >= bb.y && p.y <= bb.y + bb.h;
+  });
+  const id = s ? (s.id || s.name) : null;
+  if (id === hoverCopy.id) return; // same widget: let the running timer ripen
+  resetHoverCopy();
+  hoverCopy.id = id;
+  if (!id) return;
+  hoverCopy.timer = setTimeout(() => {
+    const label = `${s.name || s.id} (${s.id})`;
+    const done = () => toast(`Copied: ${label}`);
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(label).then(done, () => toast(label));
+    else toast(label);
+  }, HOVER_COPY_MS);
+}
+
 canvas.addEventListener("mousemove", (e) => {
   const r = canvas.getBoundingClientRect();
   const sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -5366,12 +5731,14 @@ canvas.addEventListener("mousemove", (e) => {
   }
 
   if (state.distInput) updateDistBox(); // keep the typed-distance box at the cursor
+  trackHoverCopy();
   render();
 });
 
-canvas.addEventListener("mouseleave", () => { state.mouse.over = false; render(); });
+canvas.addEventListener("mouseleave", () => { state.mouse.over = false; resetHoverCopy(); render(); });
 
 canvas.addEventListener("mousedown", (e) => {
+  resetHoverCopy();
   const r = canvas.getBoundingClientRect();
   const sx = e.clientX - r.left, sy = e.clientY - r.top;
   // Keep cursor image-coords current even if no mousemove preceded this press.
@@ -5387,6 +5754,7 @@ canvas.addEventListener("mousedown", (e) => {
     return;
   }
   if (e.button === 2) {
+    if (state.demo) { e.preventDefault(); return; } // demo: no property editing
     if (state.docMode === "canvas") { // right-click opens element properties
       const hit = hitTest(screenToImage(sx, sy));
       if (hit !== null && isElement(state.shapes[hit])) {
@@ -5401,6 +5769,21 @@ canvas.addEventListener("mousedown", (e) => {
     return;
   }
   if (e.button === 0 && state.ready) {
+    // Demo mode: the design behaves like a running app — plain clicks fire
+    // interactions, tabs switch, the scrim dismisses modals. Nothing edits.
+    if (state.demo && state.docMode === "canvas") {
+      const p = screenToImage(sx, sy);
+      const hit = hitTest(p);
+      const s = hit !== null ? state.shapes[hit] : null;
+      if (s && isActuatable(s)) {
+        actuateWidget(s, p);
+      } else if (visibleModals().length && (!s || !activeModalOf(s))) {
+        const m = visibleModals().pop();
+        m.runtimeVisible = false;
+        relayout(); render();
+      }
+      return;
+    }
     // Ctrl/Cmd+Click opens the element properties panel (any mode).
     if (e.ctrlKey || e.metaKey) {
       const hit = hitTest(screenToImage(sx, sy));
@@ -5414,19 +5797,31 @@ canvas.addEventListener("mousedown", (e) => {
     if (state.mode === "rect" || state.mode === "ellipse") {
       state.drag = { kind: "create", type: state.mode, x0: state.mouse.ix, y0: state.mouse.iy };
     } else if (state.mode === "select" || state.mode === "move") {
+      const p = screenToImage(sx, sy);
+      const hit = hitTest(p);
+      // Shift+Click makes the design act (state flips, toggle/show/hide/
+      // switch, flow-follow); a plain click only selects, so editing never
+      // fires interactions by accident. Before resize handles so a selected
+      // trigger still fires.
+      if (state.mode === "select" && hit !== null && e.shiftKey && isActuatable(state.shapes[hit])) {
+        selectOnly(hit);
+        actuateWidget(state.shapes[hit], p);
+        return;
+      }
+      // Shift+Click on the scrim (outside every open modal) closes the top
+      // modal, like a real dialog dismiss.
+      if (state.mode === "select" && e.shiftKey && visibleModals().length &&
+          (hit === null || !activeModalOf(state.shapes[hit]))) {
+        const m = visibleModals().pop();
+        m.runtimeVisible = false;
+        relayout(); render();
+        toast(`${m.name || m.id}: hidden`);
+        return;
+      }
       // Resize handles belong to Select. Move has one job: moving/reparenting.
       if (state.mode === "select" && state.selection.length === 1) {
         const h = handleAtScreen(state.shapes[state.selection[0]], sx, sy);
         if (h) { state.drag = { kind: "resize", handle: h }; return; }
-      }
-      const p = screenToImage(sx, sy);
-      const hit = hitTest(p);
-      if (state.mode === "select" && hit !== null && !e.shiftKey &&
-          ((state.shapes[hit].action && state.shapes[hit].action !== "none" && state.shapes[hit].target) ||
-           interactionTargets(state.shapes[hit]).length)) {
-        selectOnly(hit);
-        toggleInteractionTarget(state.shapes[hit]);
-        return;
       }
       // Tabs are editable directly on the design surface: a plain click selects
       // the strip and makes the tab under the pointer active. Only Move may
@@ -5534,13 +5929,15 @@ canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const r = canvas.getBoundingClientRect();
   const p = screenToImage(e.clientX - r.left, e.clientY - r.top);
-  const scroller = state.shapes.filter(s => isContainer(s) && s.overflow === "scroll" && s.interactionEnabled && responsiveVisible(s) &&
+  // Shift+wheel scrolls the design's scroll container under the cursor
+  // (any wheel in Demo mode); a plain edit-mode wheel always zooms.
+  const scroller = (e.shiftKey || state.demo) ? state.shapes.filter(s => isContainer(s) && s.overflow === "scroll" && s.interactionEnabled && responsiveVisible(s) &&
     p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h)
-    .sort((a, b) => a.w * a.h - b.w * b.h)[0];
+    .sort((a, b) => a.w * a.h - b.w * b.h)[0] : null;
   if (scroller && (scroller.scrollMaxX > 0 || scroller.scrollMaxY > 0)) {
-    if (e.shiftKey && scroller.scrollMaxX > 0)
-      scroller.scrollX = Math.max(0, Math.min(scroller.scrollMaxX, (Number(scroller.scrollX) || 0) + e.deltaY / state.view.scale));
-    else scroller.scrollY = Math.max(0, Math.min(scroller.scrollMaxY, (Number(scroller.scrollY) || 0) + e.deltaY / state.view.scale));
+    if (scroller.scrollMaxY > 0)
+      scroller.scrollY = Math.max(0, Math.min(scroller.scrollMaxY, (Number(scroller.scrollY) || 0) + e.deltaY / state.view.scale));
+    else scroller.scrollX = Math.max(0, Math.min(scroller.scrollMaxX, (Number(scroller.scrollX) || 0) + e.deltaY / state.view.scale));
     relayout(); render();
     return;
   }
@@ -5554,6 +5951,9 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.target.tagName === "INPUT") return;
+  // Demo mode: block destructive/editing shortcuts (view keys still work).
+  if (state.demo && (["Delete", "Backspace"].includes(e.key) ||
+      ((e.ctrlKey || e.metaKey) && ["x", "v", "d", "g"].includes(e.key.toLowerCase())))) return;
   // Typed distance: digits while drawing an area build a length; Enter applies it.
   if (state.building && /^[0-9.]$/.test(e.key) && !e.ctrlKey && !e.metaKey) {
     state.distInput += e.key;

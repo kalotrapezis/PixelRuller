@@ -631,13 +631,37 @@ old files auto-normalize to per-side objects via `side4`).
 Element **opacity** (0–100 %) is a property (canvas `globalAlpha`); unchecking
 **Filled** removes the fill entirely. Both are in the properties panel.
 
-### Interactive widgets (planned — Preview/Interact mode)
+### Interactive widgets (SHIPPED as Demo mode, 2026-07-18)
 
-Widgets are static in *design* mode. Add a **Preview/Interact mode** toggle where
-they respond: toggle flips `on`, checkbox/radio flips `checked`, slider sets
-`value` from the click position, and a **button follows a connection** to the
-target window/frame (drives the flow). Design mode stays for editing; preview is
-for clicking through the prototype. (No live text entry needed — it's a mockup.)
+Widgets are static in *design* mode; interactions there fire on **Shift+Click**
+(plain click only selects), Shift+wheel scrolls scroll containers, Shift+Click
+outside an open modal dismisses it. **Demo mode** (▶ Demo button / `demo
+on|off` command) is the preview toggle: plain clicks fire `action`/`target`
+interactions, tabs switch, wheel scrolls scroll containers, clicking the scrim
+closes modals — and nothing can be selected, moved, resized, deleted or
+re-parented (editing shortcuts and the props panel are blocked).
+**Completed 2026-07-19:** controls flip their own visual state (toggle `on`,
+checkbox `checked`, radio checks and clears its container siblings, slider
+sets `value` from the click position, tabs switch), and a control whose
+`action` targets another window is a **flow connection** — the camera pans to
+frame that window. Edit-mode Shift+Click actuates the same way. Also fixed:
+hit-testing now prefers exact containment before the ±8px screen tolerance,
+so at low zoom a click can't land on the neighbouring row.
+
+### Modal sections (SHIPPED 2026-07-18)
+
+A section with `modal true` floats above its whole window on a dark scrim —
+hamburger menus and gear/settings dialogs live in the same window's JSON
+instead of a fake second window. `anchor <element>` pins it under its trigger;
+without an anchor it centres in the window. Round-trips through the design
+JSON and hit-tests above everything else while open.
+
+### Design notes (SHIPPED 2026-07-18)
+
+`doc.notes` in the design JSON: free-text notes tagged with element ids
+(`note add "text" [el …]` / `note list` / `note del <id>`, or the 🗒 Notes
+popup over the bottom bar in edit mode; tag chips select the element). This is
+the designer↔Claude message channel — intent that doesn't fit a property.
 
 ### Export format: JSON canonical, XML as an output (decided 2026-07-07)
 
@@ -1033,12 +1057,20 @@ drag-and-drop with other desktop apps. None are on the roadmap through Phase 7.
 - ~~Coordinate space~~ **DECIDED 2026-07-08: slot-first layout** (see
   "Layout-first canvas"). Position = slot in a container + toolkit spacing;
   absolute px only via per-cell `fixed`.
-- **Element→code binding format** — how expressive (single selector vs. full
-  prop mapping)? Start minimal.
-- **Where `design.json` lives** — per-project in the repo so Claude sees it in
-  context, vs. the `PixelRuller` folder. Leaning repo.
+- ~~Element→code binding format~~ **CLOSED 2026-07-19: not needed.** The
+  canonical JSON/XML export is already a 1-1 description of what's on screen;
+  an AI reading the file knows exactly what to implement. No extra
+  selector/prop mapping layer.
+- ~~Where `design.json` lives~~ **DECIDED 2026-07-19: an `output/` folder in
+  the PixelRuller app folder** (read-only installs fall back to
+  `~/PixelRuller/output`, then the old Pictures location). Copy a design into
+  a project repo when Claude should see it in that repo's context.
 - **Effect nodes in the flow chart** — how rich? Start with plain-text effects
   ("saves file"); maybe typed effects (dialog, toast, state change) later.
+  **Progress 2026-07-19:** the Flow export now emits a CONNECTIONS section
+  (every `action`/`target` and hide/show binding as an edge, classified
+  flow → window / modal dialog / in-window) and the design NOTES — notes
+  tagged to an element are the plain-text effect channel for now.
 
 ## Notes / parking lot
 
